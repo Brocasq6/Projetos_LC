@@ -1,21 +1,34 @@
 {
   "version": "1",
   "metadata": {
-    "marimo_version": "0.24.2",
+    "marimo_version": "0.25.0",
     "script_metadata_hash": "5f96cbe6a784a8a636630d9a0ebe8a95"
   },
   "cells": [
     {
       "id": "setup",
-      "code_hash": "6d528259fb70518cbcc4c2401672eaf3",
+      "code_hash": "6533f71dc200ca080b9be8c1d580f66a",
       "outputs": [
         {
-          "type": "data",
-          "data": {
-            "text/plain": ""
-          }
+          "type": "error",
+          "ename": "exception",
+          "evalue": "No module named 'pandas'",
+          "traceback": null
         }
       ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stderr",
+          "text": "<span class=\"codehilite\"><div class=\"highlight\"><pre><span></span><span class=\"gt\">Traceback (most recent call last):</span>\n  File <span class=\"nb\">\"/var/folders/ql/62fljgqx6tdd70fr1ttycd1c0000gn/T/marimo_76187/__marimo__cell_setup_.py\"</span>, line <span class=\"m\">2</span>, in <span class=\"n\">&lt;module&gt;</span>\n<span class=\"w\">    </span><span class=\"kn\">import</span><span class=\"w\"> </span><span class=\"nn\">pandas</span><span class=\"w\"> </span><span class=\"k\">as</span><span class=\"w\"> </span><span class=\"nn\">pd</span>\n<span class=\"gr\">ModuleNotFoundError</span>: <span class=\"n\">No module named 'pandas'</span>\n</pre></div>\n</span>",
+          "mimetype": "application/vnd.marimo+traceback"
+        }
+      ]
+    },
+    {
+      "id": "Hbol",
+      "code_hash": null,
+      "outputs": [],
       "console": []
     }
   ]

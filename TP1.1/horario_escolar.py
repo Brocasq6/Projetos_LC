@@ -1,9 +1,15 @@
 # /// script
+# requires-python = ">=3.14"
 # dependencies = [
 #     "marimo>=0.23.3",
 # ]
-# requires-python = ">=3.14"
 # ///
+
+# dependencies = [
+#     "marimo>=0.23.3",
+#     "pandas",
+#     "ortools",
+# ]
 
 import marimo
 
@@ -12,13 +18,33 @@ app = marimo.App(width="medium")
 
 with app.setup:
     import marimo as mo
+    import pandas as pd
+    import csv
 
-    # funcao que lê ficheiros csv e verifica se tem as colunas pedidas
+    def ler_csv(diretorio,colunas_obrigatorias):
+        with open(diretorio, newline="" , encoding="utf-8") as f:
+            leitor = csv.DictReader(f)
+            colunas_em_falta = set(colunas_obrigatorias) - set(leitor.fieldnames or [])
 
-    # funcao que lê os ficheiros csv e faz a sua validacao
+            if colunas_em_falta:
+                raise ValueError(f"{diretorio} : faltam as colunas {colunas_em_falta}")
+            return list(leitor)
+
+    turmas = ler_csv("dados/turmas.csv", ["turma"])
+    disciplinas = ler_csv("dados/disciplinas.csv", 
+                            ["disciplina", "professor", "carga_semanal", "duplo_periodo", "sala_especial"])
+    disponibilidade = ler_csv("dados/disponibilidade_excecoes.csv", ["professor", "dia", "periodo"])
+    salas = ler_csv("dados/salas.csv", ["sala", "tipo", "quantidade"])
+
+    print(turmas)
+    print(disciplinas)
+    print(disponibilidade)
+    print(salas)
 
 
-
+@app.cell
+def _():
+    return
 
 
 if __name__ == "__main__":
