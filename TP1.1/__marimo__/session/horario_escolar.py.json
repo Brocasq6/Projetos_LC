@@ -2,13 +2,20 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.24.2",
-    "script_metadata_hash": "cdac4f193ea60f385129ed849f93ec6c"
+    "script_metadata_hash": "5f96cbe6a784a8a636630d9a0ebe8a95"
   },
   "cells": [
     {
       "id": "setup",
-      "code_hash": null,
-      "outputs": [],
+      "code_hash": "6d528259fb70518cbcc4c2401672eaf3",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     }
   ]

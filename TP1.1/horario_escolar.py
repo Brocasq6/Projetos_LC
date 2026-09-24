@@ -1,5 +1,7 @@
 # /// script
-# dependencies = ["marimo"]
+# dependencies = [
+#     "marimo>=0.23.3",
+# ]
 # requires-python = ">=3.14"
 # ///
 
@@ -10,6 +12,10 @@ app = marimo.App(width="medium")
 
 with app.setup:
     import marimo as mo
+
+    # funcao que lê ficheiros csv e verifica se tem as colunas pedidas
+
+    # funcao que lê os ficheiros csv e faz a sua validacao
 
 
 
