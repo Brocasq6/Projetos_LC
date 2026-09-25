@@ -53,7 +53,7 @@ with app.setup:
 
         return turmas, disciplinas, salas, excecoes
 
-"""
+    """
 Diálogo com o chatGPT:
 explica me os passos que precisamos para chegar ao produto final,
 e explica o que cada funcao que vai ser desenvolvida tem de fazer.
@@ -125,7 +125,7 @@ A função de atualização incremental pode receber o horário anterior e os no
 def atualizar_horario(horario_antigo, dados_novos):
     ...
 Deve gerar um novo horário que respeite os dados novos e, ao mesmo tempo, tente preservar as aulas que ainda podem ficar nos mesmos tempos e salas. Depois, comparem o resultado com uma resolução dos mesmos dados começada do zero. Registem o tempo e o número de alterações para apresentar a evidência pedida no enunciado. 
-"""
+    """
 
 if __name__ == "__main__":
     app.run()
