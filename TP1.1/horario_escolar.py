@@ -9,7 +9,7 @@
 
 import marimo
 
-__generated_with = "0.16.5"
+__generated_with = "0.24.2"
 app = marimo.App(width="medium")
 
 with app.setup:
@@ -17,55 +17,63 @@ with app.setup:
     import pandas as pd
     import csv
 
-    def ler_csv(diretorio,colunas_obrigatorias):
-        with open(diretorio, newline="" , encoding="utf-8") as f:
-            leitor = csv.DictReader(f)
-            colunas_em_falta = set(colunas_obrigatorias) - set(leitor.fieldnames or [])
+    # Dias e períodos da semana letiva (definidos uma única vez)
+    DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex"]
+    PERIODOS = [1, 2, 3, 4, 5]
+    TIPO_NORMAL = "normal"
 
-            if colunas_em_falta:
-                raise ValueError(f"{diretorio} : faltam as colunas {colunas_em_falta}")
-            return list(leitor)
 
-    # Carrega e devolve os dados das turmas, disciplinas, salas e disponibilidades.
-    def carregar_dados(pasta):
-        turmas = ler_csv(f"{pasta}/turmas.csv", ["turma"])
+@app.function
+def ler_csv(diretorio,colunas_obrigatorias):
+    with open(diretorio, newline="" , encoding="utf-8") as f:
+        leitor = csv.DictReader(f)
+        colunas_em_falta = set(colunas_obrigatorias) - set(leitor.fieldnames or [])
+        
+        if colunas_em_falta:
+            raise ValueError(f"{diretorio} : faltam as colunas {colunas_em_falta}")
+        return list(leitor)
 
-        disciplinas = ler_csv(
-            f"{pasta}/disciplinas.csv",
-            [
-                "disciplina",
-                "professor",
-                "carga_semanal",
-                "duplo_periodo",
-                "sala_especial",
-            ],
-        )
 
-        salas = ler_csv(
-            f"{pasta}/salas.csv",
-            [
-                "sala", 
-                "tipo", 
-                "quantidade"
-            ],
-        )
+@app.function
+# Carrega e devolve os dados das turmas, disciplinas, salas e disponibilidades.
+def carregar_dados(pasta):
+    turmas = ler_csv(f"{pasta}/turmas.csv", ["turma"])
 
-        excecoes = ler_csv(
-            f"{pasta}/disponibilidade_excecoes.csv",
-            [
-                "professor", 
-                "dia", 
-                "periodo"
-            ],
-        )
+    disciplinas = ler_csv(
+        f"{pasta}/disciplinas.csv",
+        [
+            "disciplina",
+            "professor",
+            "carga_semanal",
+            "duplo_periodo",
+            "sala_especial",
+        ],
+    )
 
-        return turmas, disciplinas, salas, excecoes
+    salas = ler_csv(
+        f"{pasta}/salas.csv",    
+        [
+            "sala", 
+            "tipo", 
+            "quantidade"
+        ],
+    )    
+
+    excecoes = ler_csv(
+        f"{pasta}/disponibilidade_excecoes.csv",
+        [
+            "professor", 
+            "dia", 
+            "periodo"
+        ],
+    )
+
+    return turmas, disciplinas, salas, excecoes
 
 
 @app.cell(hide_code=True)
 def _():
-    mo.md(
-        r"""
+    mo.md(r"""
     ## Declaração de uso de LLMs
 
     **Prompt (ChatGPT):**
@@ -222,26 +230,22 @@ def _():
     ```
 
     Deve gerar um novo horário que respeite os dados novos e, ao mesmo tempo, tente preservar as aulas que ainda podem ficar nos mesmos tempos e salas. Depois, comparem o resultado com uma resolução dos mesmos dados começada do zero. Registem o tempo e o número de alterações para apresentar a evidência pedida no enunciado.
-    """
-    )
+    """)
+    return
+
+
+@app.cell
+def _(erros):
+    def preparar_dados(dados):
+        turmas,disciplinas,salas,excecoes = dados
+        erros 
+
     return
 
 
 app._unparsable_cell(
     r"""
-    def preparar_dados(dados):
-    
-
-    """,
-    name="_"
-)
-
-
-app._unparsable_cell(
-    r"""
     def criar_tempos():
-    
-
     """,
     name="_"
 )
