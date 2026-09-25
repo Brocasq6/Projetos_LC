@@ -2,14 +2,11 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "marimo>=0.23.3",
-# ]
-# ///
-
-# dependencies = [
-#     "marimo>=0.23.3",
 #     "pandas",
 #     "ortools",
 # ]
+# ///
+
 
 import marimo
 
@@ -31,20 +28,10 @@ with app.setup:
             return list(leitor)
 
     turmas = ler_csv("dados/turmas.csv", ["turma"])
-    disciplinas = ler_csv("dados/disciplinas.csv", 
-                            ["disciplina", "professor", "carga_semanal", "duplo_periodo", "sala_especial"])
-    disponibilidade = ler_csv("dados/disponibilidade_excecoes.csv", ["professor", "dia", "periodo"])
-    salas = ler_csv("dados/salas.csv", ["sala", "tipo", "quantidade"])
-
-    print(turmas)
-    print(disciplinas)
-    print(disponibilidade)
-    print(salas)
 
 
-@app.cell
-def _():
-    return
+
+
 
 
 if __name__ == "__main__":
