@@ -9,7 +9,7 @@
 
 import marimo
 
-__generated_with = "0.24.2"
+__generated_with = "0.16.5"
 app = marimo.App(width="medium")
 
 with app.setup:
@@ -28,7 +28,7 @@ def ler_csv(diretorio,colunas_obrigatorias):
     with open(diretorio, newline="" , encoding="utf-8") as f:
         leitor = csv.DictReader(f)
         colunas_em_falta = set(colunas_obrigatorias) - set(leitor.fieldnames or [])
-        
+
         if colunas_em_falta:
             raise ValueError(f"{diretorio} : faltam as colunas {colunas_em_falta}")
         return list(leitor)
@@ -73,7 +73,8 @@ def carregar_dados(pasta):
 
 @app.cell(hide_code=True)
 def _():
-    mo.md(r"""
+    mo.md(
+        r"""
     ## Declaração de uso de LLMs
 
     **Prompt (ChatGPT):**
@@ -230,17 +231,43 @@ def _():
     ```
 
     Deve gerar um novo horário que respeite os dados novos e, ao mesmo tempo, tente preservar as aulas que ainda podem ficar nos mesmos tempos e salas. Depois, comparem o resultado com uma resolução dos mesmos dados começada do zero. Registem o tempo e o número de alterações para apresentar a evidência pedida no enunciado.
-    """)
+    """
+    )
     return
 
 
-@app.cell
-def _(erros):
-    def preparar_dados(dados):
-        turmas,disciplinas,salas,excecoes = dados
-        erros 
+@app.function
+def preparar_dados(dados):
+    turmas,disciplinas,salas,excecoes = dados
+    erros = []
 
-    return
+    # funcoes auxiliares á funcao preparar_dados
+
+    def texto(valor):
+        return(valor or "").strip()
+
+    def inteiro(valor,contexto):
+        try:
+            return #
+        except ValueError:
+            erros.append(f"{contexto}: '{valor}' não é um número inteiro")
+            return None
+
+    # carregar turmas de forma a que nao hajam repetidos 
+    turmas = []
+    for linha in turmas:
+        turma = texto(linha["turma"])
+        if not turma:
+            erros.append("turmas.csv: existe uma turma sem nome")
+        elif turma in turmas:
+            erros.append(f"turmas.csv: turma '{turma}' repetida")
+        else:
+            turmas.append(turma)
+    # carregar salas
+
+    # carregar disciplinas 
+
+    # carregar excessoes
 
 
 app._unparsable_cell(
