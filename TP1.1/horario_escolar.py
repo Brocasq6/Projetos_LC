@@ -26,6 +26,33 @@ with app.setup:
                 raise ValueError(f"{diretorio} : faltam as colunas {colunas_em_falta}")
             return list(leitor)
 
+    # Carrega e devolve os dados das turmas, disciplinas, salas e disponibilidades.
+    def carregar_dados(pasta):
+        turmas = ler_csv(f"{pasta}/turmas.csv", ["turma"])
+
+        disciplinas = ler_csv(
+            f"{pasta}/disciplinas.csv",
+            [
+                "disciplina",
+                "professor",
+                "carga_semanal",
+                "duplo_periodo",
+                "sala_especial",
+            ],
+        )
+
+        salas = ler_csv(
+            f"{pasta}/salas.csv",
+            ["sala", "tipo", "quantidade"],
+        )
+
+        excecoes = ler_csv(
+            f"{pasta}/disponibilidade_excecoes.csv",
+            ["professor", "dia", "periodo"],
+        )
+
+        return turmas, disciplinas, salas, excecoes
+
 """
 Diálogo com o chatGPT:
 explica me os passos que precisamos para chegar ao produto final,
@@ -99,35 +126,6 @@ def atualizar_horario(horario_antigo, dados_novos):
     ...
 Deve gerar um novo horário que respeite os dados novos e, ao mesmo tempo, tente preservar as aulas que ainda podem ficar nos mesmos tempos e salas. Depois, comparem o resultado com uma resolução dos mesmos dados começada do zero. Registem o tempo e o número de alterações para apresentar a evidência pedida no enunciado. 
 """
-
-# Carrega e devolve os dados das turmas, disciplinas, salas e disponibilidades a partir da pasta indicada.
-def carregar_dados(pasta):
-    turmas = ler_csv(f"{pasta}/turmas.csv", ["turma"])
-
-    disciplinas = ler_csv(
-        f"{pasta}/disciplinas.csv",
-        [
-            "disciplina",
-            "professor",
-            "carga_semanal",
-            "duplo_periodo",
-            "sala_especial",
-        ],
-    )
-
-    salas = ler_csv(
-        f"{pasta}/salas.csv",
-        ["sala", "tipo", "quantidade"],
-    )
-
-    excecoes = ler_csv(
-        f"{pasta}/disponibilidade_excecoes.csv",
-        ["professor", "dia", "periodo"],
-    )
-
-    return turmas, disciplinas, salas, excecoes
-
-
 
 if __name__ == "__main__":
     app.run()
