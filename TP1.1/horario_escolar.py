@@ -9,7 +9,7 @@
 
 import marimo
 
-__generated_with = "0.24.2"
+__generated_with = "0.16.5"
 app = marimo.App(width="medium")
 
 with app.setup:
@@ -43,21 +43,29 @@ with app.setup:
 
         salas = ler_csv(
             f"{pasta}/salas.csv",
-            ["sala", "tipo", "quantidade"],
+            [
+                "sala", 
+                "tipo", 
+                "quantidade"
+            ],
         )
 
         excecoes = ler_csv(
             f"{pasta}/disponibilidade_excecoes.csv",
-            ["professor", "dia", "periodo"],
+            [
+                "professor", 
+                "dia", 
+                "periodo"
+            ],
         )
 
         return turmas, disciplinas, salas, excecoes
 
 
-
 @app.cell(hide_code=True)
 def _():
-    mo.md(r"""
+    mo.md(
+        r"""
     ## Declaração de uso de LLMs
 
     **Prompt (ChatGPT):**
@@ -214,13 +222,92 @@ def _():
     ```
 
     Deve gerar um novo horário que respeite os dados novos e, ao mesmo tempo, tente preservar as aulas que ainda podem ficar nos mesmos tempos e salas. Depois, comparem o resultado com uma resolução dos mesmos dados começada do zero. Registem o tempo e o número de alterações para apresentar a evidência pedida no enunciado.
-    """)
+    """
+    )
     return
 
 
-@app.cell
-def _():
-    return
+app._unparsable_cell(
+    r"""
+    def preparar_dados(dados):
+    
+
+    """,
+    name="_"
+)
+
+
+app._unparsable_cell(
+    r"""
+    def criar_tempos():
+    
+
+    """,
+    name="_"
+)
+
+
+app._unparsable_cell(
+    r"""
+    def criar_modelos():
+    """,
+    name="_"
+)
+
+
+@app.function
+def adicionar_restricoes_turmas(modelo, variaveis, dados):
+    ...
+
+
+@app.function
+def adicionar_restricoes_professores(modelo, variaveis, dados):
+    ...
+
+
+@app.function
+def adicionar_restricoes_salas(modelo, variaveis, dados):
+    ...
+
+
+@app.function
+def adicionar_restricoes_diarias(modelo, variaveis, dados):
+    ...
+
+
+@app.function
+def adicionar_objetivo_buracos(modelo, variaveis, dados):
+    ...
+
+
+@app.function
+def resolver_modelo(modelo, limite_segundos=None):
+    ...
+
+
+@app.function
+def extrair_horario(solver, variaveis, dados):
+    ...
+
+
+@app.function
+def apresentar_horario(horario):
+    ...
+
+
+@app.function
+def validar_horario(horario, dados):
+    ...
+
+
+@app.function
+def contar_alteracoes(horario_antigo, horario_novo):
+    ...
+
+
+@app.function
+def atualizar_horario(horario_antigo, dados_novos):
+    ...
 
 
 if __name__ == "__main__":
