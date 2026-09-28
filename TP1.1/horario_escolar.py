@@ -49,20 +49,10 @@ with app.setup:
     import pandas as pd
     import csv
 
-<<<<<<< Updated upstream
     # Dias e períodos da semana letiva (definidos uma única vez)
     DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex"]
     PERIODOS = [1, 2, 3, 4, 5]
     TIPO_NORMAL = "normal"
-=======
-
-
-    def ler_csv(diretorio,colunas_obrigatorias):
-        with open(diretorio, newline="" , encoding="utf-8") as f:
-            leitor = csv.DictReader(f)
-            colunas_em_falta = set(colunas_obrigatorias) - set(leitor.fieldnames or [])
->>>>>>> Stashed changes
-
 
 @app.function
 def ler_csv(diretorio,colunas_obrigatorias):
