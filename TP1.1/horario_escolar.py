@@ -9,18 +9,59 @@
 
 import marimo
 
-__generated_with = "0.24.2"
+__generated_with = "0.16.5"
 app = marimo.App(width="medium")
+
+@app.cell(hide_code=True)
+def _():
+    mo.md(
+        r"""
+    # 1. Descrição do problema e abordagem
+
+    O objetivo deste trabalho é construir um gerador de horários semanais
+    para as turmas descritas nos ficheiros CSV. Cada disciplina tem uma
+    carga semanal e um professor associado; algumas disciplinas exigem
+    uma sala especial ou têm de ser lecionadas em blocos de dois tempos.
+    O horário tem de respeitar simultaneamente as disponibilidades dos
+    professores, a capacidade das salas e as regras de não sobreposição.
+
+    Para resolver o problema, vamos usar programação por restrições com
+    CP-SAT do OR-Tools. Esta abordagem permite representar cada possível
+    colocação de uma aula como uma decisão booleana e traduzir as regras
+    do enunciado em restrições do modelo. O solver procurará uma solução
+    que satisfaça todas as regras obrigatórias e, entre as soluções
+    possíveis, minimizará os tempos livres entre aulas de cada professor
+    no mesmo dia (os «buracos»).
+
+    Os dados serão sempre lidos dos CSV. Assim, o modelo não dependerá
+    dos valores específicos do exemplo e poderá ser executado com outros
+    conjuntos de turmas, disciplinas, salas e indisponibilidades no mesmo
+    formato. Mais adiante, o notebook também comparará uma resolução
+    completa com uma atualização de horário que parte de uma solução
+    anterior quando os recursos mudam.
+
+    """
+    )
+    return
 
 with app.setup:
     import marimo as mo
     import pandas as pd
     import csv
 
+<<<<<<< Updated upstream
     # Dias e períodos da semana letiva (definidos uma única vez)
     DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex"]
     PERIODOS = [1, 2, 3, 4, 5]
     TIPO_NORMAL = "normal"
+=======
+
+
+    def ler_csv(diretorio,colunas_obrigatorias):
+        with open(diretorio, newline="" , encoding="utf-8") as f:
+            leitor = csv.DictReader(f)
+            colunas_em_falta = set(colunas_obrigatorias) - set(leitor.fieldnames or [])
+>>>>>>> Stashed changes
 
 
 @app.function
@@ -70,10 +111,10 @@ def carregar_dados(pasta):
 
     return turmas, disciplinas, salas, excecoes
 
-
 @app.cell(hide_code=True)
 def _():
-    mo.md(r"""
+    mo.md(
+        r"""
     ## Declaração de uso de LLMs
 
     **Prompt (ChatGPT):**
@@ -230,7 +271,8 @@ def _():
     ```
 
     Deve gerar um novo horário que respeite os dados novos e, ao mesmo tempo, tente preservar as aulas que ainda podem ficar nos mesmos tempos e salas. Depois, comparem o resultado com uma resolução dos mesmos dados começada do zero. Registem o tempo e o número de alterações para apresentar a evidência pedida no enunciado.
-    """)
+    """
+    )
     return
 
 
