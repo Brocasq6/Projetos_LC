@@ -9,7 +9,7 @@
 
 import marimo
 
-__generated_with = "0.16.5"
+__generated_with = "0.24.2"
 app = marimo.App(width="medium")
 
 with app.setup:
@@ -73,8 +73,7 @@ def carregar_dados(pasta):
 
 @app.cell(hide_code=True)
 def _():
-    mo.md(
-        r"""
+    mo.md(r"""
     ## Declaração de uso de LLMs
 
     **Prompt (ChatGPT):**
@@ -231,8 +230,7 @@ def _():
     ```
 
     Deve gerar um novo horário que respeite os dados novos e, ao mesmo tempo, tente preservar as aulas que ainda podem ficar nos mesmos tempos e salas. Depois, comparem o resultado com uma resolução dos mesmos dados começada do zero. Registem o tempo e o número de alterações para apresentar a evidência pedida no enunciado.
-    """
-    )
+    """)
     return
 
 
@@ -263,7 +261,9 @@ def preparar_dados(dados):
             erros.append(f"turmas.csv: turma '{turma}' repetida")
         else:
             turmas.append(turma)
+
     # carregar salas
+
 
     # carregar disciplinas 
 
