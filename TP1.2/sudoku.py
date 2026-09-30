@@ -1,266 +1,282 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo",
+#     "ortools",
+# ]
+# ///
+
 import marimo
 
-__generated_with = "0.24.2"
+__generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
 
 @app.cell
 def _():
     import marimo as mo
-    from ortools.linear_solver import pywraplp
+    from ortools.sat.python import cp_model
 
-    return (pywraplp,)
+    return (cp_model,)
+
+
+@app.class_definition
+class box:
+
+    def __init__(self, celulas=None, n=3):
+        # verificar se o n é valido
+        if type(n) != int:
+            raise ValueError("n tem de ser um inteiro")
+        if n < 1:
+            raise ValueError("n tem de ser maior que 0")
+
+        self.n = n
+        self.N = n * n  # tamanho da grelha (ex: 9 para n=3)
+
+        # dicionario com (linha, coluna) -> valor ou None
+        self.celulas = {}
+
+        # se deram celulas iniciais, adicionar uma a uma
+        if celulas != None:
+            for posicao in celulas:
+                l = posicao[0]
+                c = posicao[1]
+                valor = celulas[posicao]
+                self.add(l, c, valor)
+
+    def add(self, l, c, valor=None):
+        # as coordenadas tem de ser inteiros
+        if type(l) != int or type(c) != int:
+            raise TypeError("as coordenadas tem de ser inteiros")
+
+        # as coordenadas tem de estar dentro da grelha
+        if l < 0 or l >= self.N or c < 0 or c >= self.N:
+            raise IndexError("a celula (" + str(l) + ", " + str(c) + ") esta fora da grelha")
+
+        # se houver valor, tem de ser inteiro entre 1 e N
+        if valor != None:
+            if type(valor) != int:
+                raise TypeError("o valor tem de ser um inteiro")
+            if valor < 1 or valor > self.N:
+                raise ValueError("o valor " + str(valor) + " tem de estar entre 1 e " + str(self.N))
+
+        # se a celula ja existir
+        if (l, c) in self.celulas:
+            valor_antigo = self.celulas[(l, c)]
+            # nao deixar mudar uma celula que ja estava fixa para outro valor
+            if valor_antigo != None and valor != None and valor_antigo != valor:
+                raise ValueError("a celula ja esta fixa a " + str(valor_antigo))
+            # so atualiza se o novo valor nao for None
+            if valor != None:
+                self.celulas[(l, c)] = valor
+        else:
+            self.celulas[(l, c)] = valor
+
+    def matriz(self):
+        # criar uma matriz N x N cheia de zeros
+        m = []
+        for i in range(self.N):
+            linha = []
+            for j in range(self.N):
+                linha.append(0)
+            m.append(linha)
+
+        # meter os valores fixos nas posicoes certas
+        for posicao in self.celulas:
+            valor = self.celulas[posicao]
+            if valor != None:
+                l = posicao[0]
+                c = posicao[1]
+                m[l][c] = valor
+
+        return m
+
+    def fixas(self):
+        # devolve so as celulas que tem valor
+        resultado = {}
+        for posicao in self.celulas:
+            if self.celulas[posicao] != None:
+                resultado[posicao] = self.celulas[posicao]
+        return resultado
+
+    def mostrar(self):
+        print("box com n =", self.n, "e", len(self.celulas), "celulas,", len(self.fixas()), "fixas")
+
+
+@app.class_definition
+class cube(box):
+
+    def __init__(self, i, j, n=3):
+        # inicializar a box vazia
+        box.__init__(self, None, n)
+
+        # os indices do bloco tem de ser inteiros
+        if type(i) != int or type(j) != int:
+            raise TypeError("os indices do bloco tem de ser inteiros")
+
+        # os indices do bloco tem de estar entre 0 e n-1
+        if i < 0 or i >= n or j < 0 or j >= n:
+            raise IndexError("o bloco (" + str(i) + ", " + str(j) + ") nao existe")
+
+        # canto superior esquerdo do bloco
+        linha_inicio = i * n
+        coluna_inicio = j * n
+
+        # adicionar as n x n celulas do bloco
+        for l in range(linha_inicio, linha_inicio + n):
+            for c in range(coluna_inicio, coluna_inicio + n):
+                self.add(l, c)
+
+
+@app.class_definition
+class path(box):
+
+    def __init__(self, inicio, fim, n=3):
+        # inicializar a box vazia
+        box.__init__(self, None, n)
+
+        # tirar as coordenadas do inicio e do fim
+        linha0 = inicio[0]
+        coluna0 = inicio[1]
+        linha1 = fim[0]
+        coluna1 = fim[1]
+
+        # caso horizontal (mesma linha)
+        if linha0 == linha1:
+            # ver se anda para a direita ou para a esquerda
+            if coluna1 >= coluna0:
+                passo = 1
+            else:
+                passo = -1
+
+            c = coluna0
+            while c != coluna1 + passo:
+                self.add(linha0, c)
+                c = c + passo
+
+        # caso vertical (mesma coluna)
+        elif coluna0 == coluna1:
+            # ver se anda para baixo ou para cima
+            if linha1 >= linha0:
+                passo = 1
+            else:
+                passo = -1
+
+            l = linha0
+            while l != linha1 + passo:
+                self.add(l, coluna0)
+                l = l + passo
+
+        # se nao for nem horizontal nem vertical da erro
+        else:
+            raise ValueError("o caminho de " + str(inicio) + " para " + str(fim) + " nao e reto")
 
 
 @app.cell
-def box(val):
-    class box:
-        #funcao de inicialização
-        def __init__(self, cells=None, n=3):
+def _():
+    import random
 
-            if n < 1:
-                raise ValueError(f"n inválido: {repr(n)}")
+    def pistas_random(n, k=None, seed=None):
+        N = n * n
 
-            if not isinstance(n, int) or isinstance(n, bool):
-                raise ValueError(f"n inválido: {repr(n)}")
+        # se nao derem k, usar n pistas
+        if k == None:
+            k = n
 
-            if isinstance(n, bool):
-                raise ValueError(f"n inválido: {repr(n)}")
+        # como os valores sao todos diferentes, nao da para ter mais de N pistas
+        if k < 0 or k > N:
+            raise ValueError("k tem de estar entre 0 e " + str(N))
 
-            self.n = n
-            self.N = n * n                      
-            self.cells = {}                     
+        # gerador de numeros aleatorios (com seed para dar sempre o mesmo resultado)
+        gerador = random.Random(seed)
 
-            for (l, c), valor in (cells or {}).items():
-                self.add(l, c, valor)             
+        # lista com todas as celulas da grelha
+        todas_celulas = []
+        for i in range(N):
+            for j in range(N):
+                todas_celulas.append((i, j))
 
-        #funcao que adiciona uma celula ao grupo e rejeita coordenadas ou valores invalidos
-        def add(self, l, c, valor=None):
+        # lista com todos os valores possiveis
+        todos_valores = []
+        for v in range(1, N + 1):
+            todos_valores.append(v)
 
-            for coordenada in (l, c):
-                if not isinstance(coordenada, int) or isinstance(coordenada, bool):
-                    raise TypeError(f"coordenada não inteira: {repr(coordenada)}")
-    
-            if not (0 <= l < self.N and 0 <= c < self.N):
-                raise IndexError(f"célula ({l}, {c}) fora da grelha {self.N}x{self.N}")
+        # escolher k celulas e k valores diferentes ao calhas
+        celulas = gerador.sample(todas_celulas, k)
+        valores = gerador.sample(todos_valores, k)
 
-            if valor is not None:
-                if not isinstance(valor, int):
-                    raise TypeError(f"valor não inteiro: {repr(valor)}")
-
-                if isinstance(valor, bool):
-                    raise TypeError(f"valor não inteiro: {repr(valor)}")
-
-                if not (1 <= val <= self.N):
-                    raise ValueError(f"valor {val} fora de [1, {self.N}]")
-
-            atual = self.cells.get((l, c))
-
-            if atual is not None and val is not None and atual != val:
-                raise ValueError(f"({l}, {c}) já está fixa a {atual}, não pode passar a {val}")
-
-            if val is not None or (l, c) not in self.cells:
-                self.cells[(l, c)] = val
-
-            return self                         
-
-        #funcao que devolve o grupo como uma matriz NxN, com valores fixos e zeros em tudo o que restar
-        def matrix(self):
-
-            matriz = [[0] * self.N for _ in range(self.N)]
-
-            for (l, c), val in self.cells.items():
-                if val is not None:
-                    matriz[l][c] = val
-            return matriz
-
-        #funcao que devolve as celulas que estiverem fixas
-        def fixas(self):
-            return {cel: val for cel, val in self.cells.items() if val is not None}
-
-        def __iter__(self):
-            return iter(self.cells.items())
-
-        def __len__(self):
-            return len(self.cells)
-
-        def __contains__(self, cel):
-            return cel in self.cells
-
-        def __repr__(self):
-            return (f"{type(self).__name__} (n={self.n}, {len(self)} células, "f"{len(self.fixed())} fixas) ")
-
-    return (box,)
-
-
-@app.cell
-def _(box):
-    class cube(box):
-
-            def __init__(self, i, j, n=3):
-
-                super().__init__(n=n)
-
-                #garantir que os valores são inteiros 
-                for indice in (i, j):
-                    if not isinstance(indice, int) or isinstance(indice, bool):
-                        raise TypeError(f"índice de bloco não inteiro: {repr(indice)}")
-
-                if not (0 <= i < n and 0 <= j < n):
-                    raise IndexError(f"bloco ({i}, {j}) fora de [0, {n})")
-
-                for l in range(i * n, (i + 1) * n):
-                    for c in range(j * n, (j + 1) * n):
-                        self.add(l, c)
-
-                return (cube)
-
-
-    return
-
-
-@app.cell
-def _(box, c0, c1, l0, l1):
-    class path(box):
-
-            def __init__(self, inicio, fim, n=3):
-
-                super().__init__(n=n)
-
-                (linha0, col0) = inicio
-                (linha1, col1) = fim
-
-                # verifi
-                if linha0 == linha1:                        
-                    passo = 1 if col1 >= col0 else -1
-                    celulas = [(linha0, c) for colunas in range(col0, col1 + passo, passo)]
-
-                elif c0 == c1:
-                    passo = 1 if l1 >= l0 else -1
-                    celulas = [(l, c0) for l in range(l0, l1 + passo, passo)]
-
-                else:
-                    raise ValueError(f"{inicio} -> {fim} não é um troço horizontal nem vertical")
-
-                for l, c in celulas:
-                    self.add(l, c)
-
-                return (path)
-
-    return
-
-
-@app.cell
-def _(box, random):
-    def pistas_random(n, k = None , seed = None):
-        N = n*n
-        k = n if k is None else k
-
-        if not 0 <= k <= N:
-            raise ValueError(f"k tem de estar em [0,{N}] valores distintos")
-
-        range = random.Random(seed)
-
-        celulas = range.sample([(i,j) for i in range(N) for j in range(N)],k)
-
-        valores = range.sample(range(1,N+1),k)
-
-        b = box(n)
-
-        for(i,j) , v in zip(celulas,valores):
-            b.add(i,j,v)
+        # criar a box com as pistas
+        b = box(None, n)
+        for x in range(k):
+            l = celulas[x][0]
+            c = celulas[x][1]
+            b.add(l, c, valores[x])
         return b
 
     return
 
 
 @app.cell
-def _(g, none, pywraplp, v):
+def _(cp_model):
     class Modelo:
 
         def __init__(self, n=3):
             self.n = n
             self.N = n * n
 
-            # criar o solver
-            self.solver = pywraplp.Solver.CreateSolver("SCIP")
-            if self.solver is None:
-                raise RuntimeError("SCIP não disponível no OR-Tools instalado")
+            # criar o modelo
+            self.modelo = cp_model.CpModel()
 
-            # criar as variáveis binárias x[l][c][v]
+            # uma variavel inteira por celula, com valor entre 1 e N
             self.x = []
             for l in range(self.N):
                 linha = []
                 for c in range(self.N):
-                    celula = {}
-                    for v in range(1, self.N + 1):
-                        celula[v] = self.solver.BoolVar(f"x_{l}_{c}_{v}")
-                    linha.append(celula)
+                    nome = "x_" + str(l) + "_" + str(c)
+                    linha.append(self.modelo.NewIntVar(1, self.N, nome))
                 self.x.append(linha)
 
-            # criar as variáveis inteiras y[l][c], com valor entre 1 e N
-            self.y = []
-            for l in range(self.N):
-                linha = []
-                for c in range(self.N):
-                    linha.append(self.solver.IntVar(1, self.N, f"y_{l}_{c}"))
-                self.y.append(linha)
-
-            # restrições de cada célula
-            for l in range(self.N):
-                for c in range(self.N):
-
-                    # cada célula tem exatamente um valor
-                    soma = 0
-                    for v in range(1, self.N + 1):
-                        soma = soma + self.x[l][c][v]
-                    self.solver.Add(soma == 1)
-
-                    # y[l][c] é igual ao valor
-                    valor_celula = 0
-                    for v in range(1, self.N + 1):
-                        valor_celula = valor_celula + v * self.x[l][c][v]
-                    self.solver.Add(self.y[l][c] == valor_celula)
-
-        def add(self, grupos):
+        def add(self, *grupos):
             for grupo in grupos:
-        
-                # o grupo tem de ter o mesmo tamanho de grelha que o modelo
+
+                # o grupo tem de ser do mesmo tamanho que o modelo
                 if grupo.N != self.N:
-                    raise ValueError(f"grupo com N={g.N}, modelo com N={self.N}")
+                    raise ValueError("o grupo tem N=" + str(grupo.N) + " mas o modelo tem N=" + str(self.N))
 
-                # todos diferentes: cada valor aparece no máximo uma vez no grupo
-                for valor in range(1, self.N + 1):
-                    soma = 0
-                    for (l, c) in g.cells:
-                        soma = soma + self.x[l][c][v]
-                    self.solver.Add(soma <= 1)
+                # juntar as variaveis das celulas do grupo
+                variaveis = []
+                for posicao in grupo.celulas:
+                    l = posicao[0]
+                    c = posicao[1]
+                    variaveis.append(self.x[l][c])
 
-                # fixar as células que têm valor
-                for (l, c) in g.cells:
-                    val = g.cells[(l, c)]
-                    if val is not None:
-                        self.solver.Add(self.x[l][c][val] == 1)
+                # todas as celulas do grupo tem valores diferentes
+                self.modelo.AddAllDifferent(variaveis)
 
-            return self
+                # fixar as celulas que tem valor
+                for posicao in grupo.celulas:
+                    valor = grupo.celulas[posicao]
+                    if valor != None:
+                        l = posicao[0]
+                        c = posicao[1]
+                        self.modelo.Add(self.x[l][c] == valor)
 
         def solve(self):
-    
-            estado = self.solver.Solve()
+            solver = cp_model.CpSolver()
+            estado = solver.Solve(self.modelo)
 
-            if estado != pywraplp.Solver.OPTIMAL:
+            # se nao encontrou solucao devolve None
+            if estado != cp_model.OPTIMAL and estado != cp_model.FEASIBLE:
                 return None
-            if estado != pywraplp.Solver.FEASIBLE:
-                return none
 
+            # construir a grelha com a solucao
             grelha = []
-    
             for l in range(self.N):
                 linha = []
                 for c in range(self.N):
-                    valor = self.y[l][c].solution_value()
-                    linha.append(int(round(valor)))
+                    linha.append(solver.Value(self.x[l][c]))
                 grelha.append(linha)
+
             return grelha
 
     return
