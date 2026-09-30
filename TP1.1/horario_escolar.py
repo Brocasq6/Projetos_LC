@@ -14,6 +14,12 @@ __generated_with = "0.16.5"
 app = marimo.App(width="medium")
 
 
+@app.cell
+def _():
+    import marimo as mo
+    return (mo,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -283,38 +289,103 @@ def _(mo):
 
 @app.function
 def preparar_dados(dados):
-    linhas_turmas, disciplinas, salas, excecoes = dados
-    erros = []
+    linhas_turmas, linhas_disciplinas, linhas_salas, linhas_excecoes = dados
 
-    def texto(valor):
-        return (valor or "").strip()
+    turmas = [linha["turma"].strip() for linha in linhas_turmas]
 
-    def inteiro(valor, contexto):
-        try:
-            return int(texto(valor))
-        except (TypeError, ValueError):
-            erros.append(f"{contexto}: '{valor}' não é um número inteiro")
-            return None
+    if not turmas or any(not turma for turma in turmas):
+        raise ValueError("Há turmas sem nome")
+    if len(turmas) != len(set(turmas)):
+        raise ValueError("Há turmas repetidas")
 
-    turmas = []
-    turmas_vistas = set()
+    salas = []
+    for linha in linhas_salas:
+        sala = {
+            "sala": linha["sala"].strip(),
+            "tipo": linha["tipo"].strip().lower(),
+            "quantidade": int(linha["quantidade"]),
+        }
+        if sala["tipo"] not in {"normal", "especial"}:
+            raise ValueError(f"Tipo de sala inválido: {sala['tipo']}")
+        if sala["quantidade"] < 1:
+            raise ValueError(f"Quantidade inválida para a sala {sala['sala']}")
+        salas.append(sala)
+        if not sala["sala"]:
+            raise ValueError("Há salas sem nome")
+        
 
-    for linha in linhas_turmas:
-        turma = texto(linha.get("turma"))
-        if not turma:
-            erros.append("turmas.csv: existe uma turma sem nome")
-        elif turma in turmas_vistas:
-            erros.append(f"turmas.csv: turma '{turma}' repetida")
-        else:
-            turmas.append(turma)
-            turmas_vistas.add(turma)
+    salas_especiais = {
+        sala["sala"] for sala in salas if sala["tipo"] == "especial"
+    }
 
-    # Aqui validamos também disciplinas, salas e exceções.
-    # No fim, se houver erros, devolvemos mensagens claras.
-    if erros:
-        raise ValueError("\n".join(erros))
+    disciplinas = []
+    for linha in linhas_disciplinas:
+        duplo = linha["duplo_periodo"].strip().lower()
+        carga = int(linha["carga_semanal"])
+        sala_especial = linha["sala_especial"].strip()
+        nome_disciplina = linha["disciplina"].strip()
+        professor = linha["professor"].strip()
+
+        if not nome_disciplina:
+            raise ValueError("Há disciplinas sem nome")
+        if not professor:
+            raise ValueError(f"Falta o professor da disciplina {nome_disciplina}")
+
+        if duplo not in {"sim", "nao"}:
+            raise ValueError(
+                f"Valor inválido em duplo_periodo: {linha['duplo_periodo']}"
+            )
+        if carga < 1 or (duplo == "sim" and carga % 2 != 0): 
+            #se carga é dupla, erro se o resto a dividir por 2 =! 0
+            raise ValueError(
+                f"Carga semanal inválida para {linha['disciplina']}"
+            )
+        if sala_especial and sala_especial not in salas_especiais:
+            raise ValueError(f"Sala especial inexistente: {sala_especial}")
+
+        disciplinas.append({
+            "disciplina": nome_disciplina,
+            "professor": professor,
+            "carga_semanal": carga,
+            "duplo_periodo": duplo == "sim",
+            "sala_especial": sala_especial or None,
+        })
+
+    dias_validos = {"Seg", "Ter", "Qua", "Qui", "Sex"}
+    professores = {disciplina["professor"] for disciplina in disciplinas}
+
+    excecoes = []
+    for linha in linhas_excecoes:
+        professor = linha["professor"].strip()
+        dia = linha["dia"].strip()
+        periodo = int(linha["periodo"])
+
+        if professor not in professores:
+            raise ValueError(f"Professor desconhecido na exceção: {professor}")
+        if dia not in dias_validos or periodo not in range(1, 6):
+            raise ValueError(f"Dia ou período inválido: {dia}, {periodo}")
+
+        excecoes.append({
+            "professor": professor,
+            "dia": dia,
+            "periodo": periodo,
+        })
 
     return turmas, disciplinas, salas, excecoes
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+Prompt no ChatGPT: muito bem. vamos prosseguir para a 
+proxima funcao do plano que foi elaborado para a resolucao deste TP1.1
+Resposta do LLM: A próxima função do plano é criar_tempos(). Ela prepara a lista de todos os tempos possíveis da semana, que depois o modelo usará para decidir onde colocar cada aula.
+O trabalho define cinco dias (Seg a Sex) e cinco períodos por dia. A função deve devolver 25 pares, cada um com um dia e um período. Por exemplo, o primeiro par seria ("Seg", 1) e o último, ("Sex", 5).
+Para a primeira versão, pensa em dois ciclos encadeados: para cada dia, percorres os cinco períodos e acrescentas o par (dia, periodo) a uma lista. É parecido com ciclos for dentro de ciclos em C ou Java.
+Usa uma lista ordenada de dias para que os tempos fiquem sempre na mesma ordem.
+        """
+    )
+    return
 
 
 app._unparsable_cell(
