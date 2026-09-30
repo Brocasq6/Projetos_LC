@@ -8,12 +8,14 @@
 # ///
 
 import marimo
+import marimo as mo
 
 __generated_with = "0.16.5"
 app = marimo.App(width="medium")
 
+
 @app.cell(hide_code=True)
-def _():
+def _(mo):
     mo.md(
         r"""
     # 1. Descrição do problema e abordagem
@@ -39,70 +41,65 @@ def _():
     formato. Mais adiante, o notebook também comparará uma resolução
     completa com uma atualização de horário que parte de uma solução
     anterior quando os recursos mudam.
-
     """
     )
     return
 
-with app.setup:
-    import marimo as mo
-    import pandas as pd
-    import csv
 
-    # Dias e períodos da semana letiva (definidos uma única vez)
-    DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex"]
-    PERIODOS = [1, 2, 3, 4, 5]
-    TIPO_NORMAL = "normal"
+@app.cell
+def _(csv):
+    def ler_csv(diretorio,colunas_obrigatorias):
+        with open(diretorio, newline="" , encoding="utf-8") as f:
+            leitor = csv.DictReader(f)
+            colunas_em_falta = set(colunas_obrigatorias) - set(leitor.fieldnames or [])
 
-@app.function
-def ler_csv(diretorio,colunas_obrigatorias):
-    with open(diretorio, newline="" , encoding="utf-8") as f:
-        leitor = csv.DictReader(f)
-        colunas_em_falta = set(colunas_obrigatorias) - set(leitor.fieldnames or [])
-
-        if colunas_em_falta:
-            raise ValueError(f"{diretorio} : faltam as colunas {colunas_em_falta}")
-        return list(leitor)
+            if colunas_em_falta:
+                raise ValueError(f"{diretorio} : faltam as colunas {colunas_em_falta}")
+            return list(leitor)
+    return (ler_csv,)
 
 
-@app.function
-# Carrega e devolve os dados das turmas, disciplinas, salas e disponibilidades.
-def carregar_dados(pasta):
-    turmas = ler_csv(f"{pasta}/turmas.csv", ["turma"])
+@app.cell
+def _(ler_csv):
+    # Carrega e devolve os dados das turmas, disciplinas, salas e disponibilidades.
+    def carregar_dados(pasta):
+        turmas = ler_csv(f"{pasta}/turmas.csv", ["turma"])
 
-    disciplinas = ler_csv(
-        f"{pasta}/disciplinas.csv",
-        [
-            "disciplina",
-            "professor",
-            "carga_semanal",
-            "duplo_periodo",
-            "sala_especial",
-        ],
-    )
+        disciplinas = ler_csv(
+            f"{pasta}/disciplinas.csv",
+            [
+                "disciplina",
+                "professor",
+                "carga_semanal",
+                "duplo_periodo",
+                "sala_especial",
+            ],
+        )
 
-    salas = ler_csv(
-        f"{pasta}/salas.csv",    
-        [
-            "sala", 
-            "tipo", 
-            "quantidade"
-        ],
-    )    
+        salas = ler_csv(
+            f"{pasta}/salas.csv",    
+            [
+                "sala", 
+                "tipo", 
+                "quantidade"
+            ],
+        )    
 
-    excecoes = ler_csv(
-        f"{pasta}/disponibilidade_excecoes.csv",
-        [
-            "professor", 
-            "dia", 
-            "periodo"
-        ],
-    )
+        excecoes = ler_csv(
+            f"{pasta}/disponibilidade_excecoes.csv",
+            [
+                "professor", 
+                "dia", 
+                "periodo"
+            ],
+        )
 
-    return turmas, disciplinas, salas, excecoes
+        return turmas, disciplinas, salas, excecoes
+    return
+
 
 @app.cell(hide_code=True)
-def _():
+def _(mo):
     mo.md(
         r"""
     ## Declaração de uso de LLMs
@@ -266,40 +263,58 @@ def _():
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    Prompt no CHATGPT: "vamos prosseguir. da-me as bases para a construcao da funcao preparar dados"
+
+    Resposta do LLM: A função `preparar_dados` será a etapa entre **ler os CSV** e **construir o modelo do horário**. `ler_csv` devolve valores como texto; `preparar_dados` converte-os para os tipos adequados e deteta dados inválidos. Ainda não cria o horário.
+
+    Como `carregar_dados` devolve quatro valores, a nova função pode recebê-los assim:
+    ```python
+    def preparar_dados(turmas, disciplinas, salas, excecoes):
+        ...
+    ```
+    """
+    )
+    return
+
+
 @app.function
 def preparar_dados(dados):
-    turmas,disciplinas,salas,excecoes = dados
+    linhas_turmas, disciplinas, salas, excecoes = dados
     erros = []
 
-    # funcoes auxiliares á funcao preparar_dados
-
     def texto(valor):
-        return(valor or "").strip()
+        return (valor or "").strip()
 
-    def inteiro(valor,contexto):
+    def inteiro(valor, contexto):
         try:
-            return #
-        except ValueError:
+            return int(texto(valor))
+        except (TypeError, ValueError):
             erros.append(f"{contexto}: '{valor}' não é um número inteiro")
             return None
 
-    # carregar turmas de forma a que nao hajam repetidos 
     turmas = []
-    for linha in turmas:
-        turma = texto(linha["turma"])
+    turmas_vistas = set()
+
+    for linha in linhas_turmas:
+        turma = texto(linha.get("turma"))
         if not turma:
             erros.append("turmas.csv: existe uma turma sem nome")
-        elif turma in turmas:
+        elif turma in turmas_vistas:
             erros.append(f"turmas.csv: turma '{turma}' repetida")
         else:
             turmas.append(turma)
+            turmas_vistas.add(turma)
 
-    # carregar salas
+    # Aqui validamos também disciplinas, salas e exceções.
+    # No fim, se houver erros, devolvemos mensagens claras.
+    if erros:
+        raise ValueError("\n".join(erros))
 
-
-    # carregar disciplinas 
-
-    # carregar excessoes
+    return turmas, disciplinas, salas, excecoes
 
 
 app._unparsable_cell(
