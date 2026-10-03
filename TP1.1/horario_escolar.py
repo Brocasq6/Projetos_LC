@@ -8,10 +8,9 @@
 # ///
 
 import marimo
-import marimo as mo
 
 __generated_with = "0.16.5"
-app = marimo.App(width="medium")
+app = marimo.App(width="full")
 
 
 @app.cell
@@ -20,36 +19,52 @@ def _():
     return (mo,)
 
 
+@app.cell
+def _():
+    from ortools.sat.python import cp_model
+    return (cp_model,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
         r"""
     # 1. Descrição do problema e abordagem
 
-    O objetivo deste trabalho é construir um gerador de horários semanais
-    para as turmas descritas nos ficheiros CSV. Cada disciplina tem uma
-    carga semanal e um professor associado; algumas disciplinas exigem
-    uma sala especial ou têm de ser lecionadas em blocos de dois tempos.
-    O horário tem de respeitar simultaneamente as disponibilidades dos
-    professores, a capacidade das salas e as regras de não sobreposição.
+    > **Objetivo** — construir um gerador de horários semanais a partir dos
+    > ficheiros CSV, respeitando as regras das turmas, disciplinas, professores
+    > e salas.
 
-    Para resolver o problema, vamos usar programação por restrições com
-    CP-SAT do OR-Tools. Esta abordagem permite representar cada possível
-    colocação de uma aula como uma decisão booleana e traduzir as regras
-    do enunciado em restrições do modelo. O solver procurará uma solução
-    que satisfaça todas as regras obrigatórias e, entre as soluções
-    possíveis, minimizará os tempos livres entre aulas de cada professor
-    no mesmo dia (os «buracos»).
+    ## Regras principais
 
-    Os dados serão sempre lidos dos CSV. Assim, o modelo não dependerá
-    dos valores específicos do exemplo e poderá ser executado com outros
-    conjuntos de turmas, disciplinas, salas e indisponibilidades no mesmo
-    formato. Mais adiante, o notebook também comparará uma resolução
-    completa com uma atualização de horário que parte de uma solução
-    anterior quando os recursos mudam.
+    - Cada disciplina tem uma carga semanal e um professor associado.
+    - Algumas disciplinas precisam de uma sala especial ou de blocos de dois
+      períodos consecutivos.
+    - Uma turma, um professor ou uma sala não podem ter aulas sobrepostas.
+    - As indisponibilidades dos professores e a capacidade das salas têm de ser
+      respeitadas.
+
+    ## Estratégia de resolução
+
+    Usaremos programação por restrições com **CP-SAT**, do OR-Tools. Cada
+    colocação possível de uma aula será representada por uma decisão booleana.
+    O solver procurará primeiro uma solução que cumpra todas as regras
+    obrigatórias e, depois, minimizará os tempos livres entre aulas de cada
+    professor no mesmo dia (os «buracos»).
+
+    Os dados serão sempre lidos dos CSV, pelo que o modelo poderá ser usado com
+    outros conjuntos de turmas, disciplinas, salas e indisponibilidades no mesmo
+    formato. No final, o notebook também comparará uma resolução completa com
+    uma atualização de horário baseada numa solução anterior.
     """
     )
     return
+
+
+@app.cell
+def _():
+    import csv
+    return (csv,)
 
 
 @app.cell
@@ -101,7 +116,7 @@ def _(ler_csv):
         )
 
         return turmas, disciplinas, salas, excecoes
-    return
+    return (carregar_dados,)
 
 
 @app.cell(hide_code=True)
@@ -169,28 +184,28 @@ def _(mo):
     Para manter o código compreensível, podem criar funções que acrescentam grupos de regras ao modelo:
 
     ```python
-    def adicionar_restricoes_turmas(modelo, variaveis, dados):
+    def adicionar_restricoes_turmas(modelo, x, dados):
         ...
     ```
 
     Impede que uma turma tenha duas aulas ao mesmo tempo e garante que cada disciplina cumpre a sua carga semanal.
 
     ```python
-    def adicionar_restricoes_professores(modelo, variaveis, dados):
+    def adicionar_restricoes_professores(modelo, x, dados):
         ...
     ```
 
     Impede conflitos entre aulas do mesmo professor e bloqueia os períodos em que esse professor está indisponível.
 
     ```python
-    def adicionar_restricoes_salas(modelo, variaveis, dados):
+    def adicionar_restricoes_salas(modelo, x, dados):
         ...
     ```
 
     Garante que cada aula usa uma sala compatível e que não são usadas mais salas do mesmo tipo do que as disponíveis.
 
     ```python
-    def adicionar_restricoes_diarias(modelo, variaveis, dados):
+    def adicionar_restricoes_diarias(modelo, x, dados):
         ...
     ```
 
@@ -203,7 +218,7 @@ def _(mo):
     Depois das restrições, acrescentam o objetivo de reduzir os «buracos» dos professores — tempos livres entre a primeira e a última aula num dia.
 
     ```python
-    def adicionar_objetivo_buracos(modelo, variaveis, dados):
+    def adicionar_objetivo_buracos(modelo, x, dados):
         ...
     ```
 
@@ -221,7 +236,7 @@ def _(mo):
     Os valores das variáveis do solver não são ainda uma apresentação amigável. Uma função pode convertê-los numa lista organizada de aulas:
 
     ```python
-    def extrair_horario(solver, variaveis, dados):
+    def extrair_horario(solver, x, dados):
         ...
     ```
 
@@ -273,9 +288,18 @@ def _(mo):
 def _(mo):
     mo.md(
         r"""
-    Prompt no CHATGPT: "vamos prosseguir. da-me as bases para a construcao da funcao preparar dados"
+    ### Registo de apoio — `preparar_dados`
 
-    Resposta do LLM: A função `preparar_dados` será a etapa entre **ler os CSV** e **construir o modelo do horário**. `ler_csv` devolve valores como texto; `preparar_dados` converte-os para os tipos adequados e deteta dados inválidos. Ainda não cria o horário.
+    **Prompt**
+
+    > Vamos prosseguir. Dá-me as bases para a construção da função `preparar_dados`.
+
+    **Resposta**
+
+    A função `preparar_dados` será a etapa entre **ler os CSV** e **construir o
+    modelo do horário**. `ler_csv` devolve valores como texto;
+    `preparar_dados` converte-os para os tipos adequados e deteta dados
+    inválidos. Ainda não cria o horário.
 
     Como `carregar_dados` devolve quatro valores, a nova função pode recebê-los assim:
     ```python
@@ -312,7 +336,7 @@ def preparar_dados(dados):
         salas.append(sala)
         if not sala["sala"]:
             raise ValueError("Há salas sem nome")
-        
+
 
     salas_especiais = {
         sala["sala"] for sala in salas if sala["tipo"] == "especial"
@@ -373,59 +397,237 @@ def preparar_dados(dados):
 
     return turmas, disciplinas, salas, excecoes
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
         r"""
-Prompt no ChatGPT: muito bem. vamos prosseguir para a 
-proxima funcao do plano que foi elaborado para a resolucao deste TP1.1
-Resposta do LLM: A próxima função do plano é criar_tempos(). Ela prepara a lista de todos os tempos possíveis da semana, que depois o modelo usará para decidir onde colocar cada aula.
-O trabalho define cinco dias (Seg a Sex) e cinco períodos por dia. A função deve devolver 25 pares, cada um com um dia e um período. Por exemplo, o primeiro par seria ("Seg", 1) e o último, ("Sex", 5).
-Para a primeira versão, pensa em dois ciclos encadeados: para cada dia, percorres os cinco períodos e acrescentas o par (dia, periodo) a uma lista. É parecido com ciclos for dentro de ciclos em C ou Java.
-Usa uma lista ordenada de dias para que os tempos fiquem sempre na mesma ordem.
-        """
+    ### Registo de apoio — `criar_tempos`
+
+    **Prompt**
+
+    > Muito bem. Vamos prosseguir para a próxima função do plano elaborado para
+    > resolver este TP1.1.
+
+    **Resposta**
+
+    A próxima função do plano é `criar_tempos()`. Ela prepara a lista de todos
+    os tempos possíveis da semana, que depois o modelo usará para decidir onde
+    colocar cada aula.
+    O trabalho define **cinco dias e cinco períodos por dia**. A função deve
+    devolver 25 pares `(dia, período)`, desde `("Seg", 1)` até `("Sex", 5)`.
+
+    Para construir a lista, percorremos os dias por uma ordem fixa e, para cada
+    dia, percorremos os períodos de 1 a 5. Assim, os tempos ficam sempre
+    organizados da mesma forma.
+    """
     )
     return
 
 
-app._unparsable_cell(
-    r"""
-    def criar_tempos():
-    """,
-    name="_"
-)
+@app.function
+def criar_tempos():
+    dias = ["Seg", "Ter", "Qua", "Qui", "Sex"]
+    tempos = []
+
+    for dia in dias:
+        for periodo in range(1, 6):
+            tempos.append((dia, periodo))
+
+    return tempos
 
 
-app._unparsable_cell(
-    r"""
-    def criar_modelos():
-    """,
-    name="_"
-)
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    ### Registo de apoio — `criar_modelo`
+
+    **Prompt**
+
+    > Ok, vamos então à próxima.
+
+    **Resposta**
+
+    A próxima função do plano é `criar_modelo`. Antes de a escrevermos,
+    precisamos de decidir o que representa uma variável de decisão no modelo
+    CP-SAT.
+
+    Uma opção que trata naturalmente as aulas duplas é criar uma variável booleana para cada **possível colocação de uma aula**:
+
+    - `False` significa que a aula não começa nesse dia e período.
+    - `True` significa que começa aí.
+    - Para uma aula simples, qualquer período pode ser início.
+    - Para uma aula dupla, só os períodos 1 a 4 podem ser início, porque tem de haver um período seguinte.
+
+    Por exemplo, uma variável para Matemática da turma 7.º A, à terça-feira no
+    período 2, representa essa colocação. Pode chamar-se
+    `x_7A_Matematica_Ter_2`.
+
+    A função terá este papel:
+    ```python
+    def criar_modelo(dados, tempos):
+    ...
+    return modelo, x
+    ```
+
+    Deve criar o modelo CP-SAT e as variáveis de decisão. As regras — como
+    impedir conflitos de professores e cumprir as cargas semanais — ficam para
+    as funções de restrições.
+
+    **Aulas duplas:** uma variável ocupa dois períodos, apesar de representar
+    uma única colocação. As restrições terão de considerar o período de início
+    e o período seguinte.
+    """
+    )
+    return
+
+@app.cell
+def _(cp_model):
+    def criar_modelo(dados, tempos):
+        turmas, disciplinas, _, _ = dados
+        modelo = cp_model.CpModel()
+        x = {}
+
+        for i_turma, turma in enumerate(turmas):
+            x[turma] = {}
+
+            for i_disciplina, disciplina in enumerate(disciplinas):
+                nome = disciplina["disciplina"]
+                x[turma][nome] = {}
+
+                for dia, periodo in tempos:
+                    if dia not in x[turma][nome]:
+                        x[turma][nome][dia] = {}
+
+                    if disciplina["duplo_periodo"] and periodo == 5:
+                        continue
+
+                    nome_variavel = f"x_{i_turma}_{i_disciplina}_{dia}_{periodo}"
+                    x[turma][nome][dia][periodo] = modelo.NewBoolVar(nome_variavel)
+
+        return modelo, x
+    return (criar_modelo,)
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    ### Registo de apoio — restrições das turmas
+
+    **Prompt**
+
+    > Agora que finalizámos estas funções, vamos começar a tratar das
+    > restrições, começando pelas restrições das turmas.
+
+    **Resposta**
+
+    As restrições das turmas cobrem três regras do enunciado:
+
+    - **R1:** uma turma não pode ter duas aulas ao mesmo tempo.
+    - **R2:** cada disciplina tem de cumprir a carga semanal daquela turma.
+    - **R3:** a mesma disciplina só pode ocorrer uma vez por dia para essa turma.
+
+    ## Representação das aulas
+
+    Cada variável booleana representa uma possível colocação de uma aula. Ela
+    fica organizada em quatro níveis:
+
+    ```text
+    x[turma][disciplina][dia][período_de_início]
+    ```
+
+    Por exemplo, `x["7ºA"]["Matemática"]["Ter"][2]` representa a opção de
+    Matemática do 7.º A começar à terça-feira no período 2. `True` quer dizer
+    que essa colocação foi escolhida; `False`, que não foi escolhida. Uma aula
+    dupla ocupa o período de início e o seguinte.
+
+    A função para acrescentar estas regras ao modelo será:
+
+    ```python
+    def adicionar_restricoes_turmas(modelo, x, dados):
+        ...
+    ```
+
+    ## Começar por R2: carga semanal
+
+    Para cada turma e disciplina, somamos as variáveis de todas as colocações
+    possíveis. Uma aula simples conta como 1 período; uma dupla conta como 2.
+    Essa soma tem de ser igual à `carga_semanal`.
+
+    ```text
+    soma(colocações escolhidas × duração da aula) = carga semanal
+    ```
+
+    Por exemplo, Matemática com carga semanal 4 precisa de quatro aulas
+    simples; Educação Física com carga 2 e duplo período precisa de um bloco
+    duplo.
+    """
+    )
+    return
+
+@app.function
+def adicionar_restricoes_turmas(modelo, x, dados):
+    turmas, disciplinas, _, _ = dados
+    dias = ["Seg", "Ter", "Qua", "Qui", "Sex"]
+
+    # Cada disciplina tem de cumprir a carga semanal em cada turma.
+    for turma in turmas:
+        for disciplina in disciplinas:
+            nome = disciplina["disciplina"]
+            colocacoes = []
+
+            for dia in dias:
+                for periodo in range(1, 6):
+                    if periodo in x[turma][nome][dia]:
+                        colocacoes.append(x[turma][nome][dia][periodo])
+
+            sessoes_necessarias = disciplina["carga_semanal"]
+            if disciplina["duplo_periodo"]:
+                sessoes_necessarias //= 2
+                # O operador //= divide e guarda o resultado na mesma variável.
+
+            modelo.Add(sum(colocacoes) == sessoes_necessarias)
+
+    # Uma turma só pode ter uma aula a decorrer em cada período.
+    for turma in turmas:
+        for dia in dias:
+            for periodo in range(1, 6):
+                aulas_a_decorrer = []
+
+                for disciplina in disciplinas:
+                    nome = disciplina["disciplina"]
+
+                    if periodo in x[turma][nome][dia]:
+                        aulas_a_decorrer.append(x[turma][nome][dia][periodo])
+
+                    if disciplina["duplo_periodo"] and periodo > 1:
+                        inicio_anterior = periodo - 1
+                        if inicio_anterior in x[turma][nome][dia]:
+                            aulas_a_decorrer.append(
+                                x[turma][nome][dia][inicio_anterior]
+                            )
+
+                modelo.Add(sum(aulas_a_decorrer) <= 1)
 
 
 @app.function
-def adicionar_restricoes_turmas(modelo, variaveis, dados):
+def adicionar_restricoes_professores(modelo, x, dados):
     ...
 
 
 @app.function
-def adicionar_restricoes_professores(modelo, variaveis, dados):
+def adicionar_restricoes_salas(modelo, x, dados):
     ...
 
 
 @app.function
-def adicionar_restricoes_salas(modelo, variaveis, dados):
+def adicionar_restricoes_diarias(modelo, x, dados):
     ...
 
 
 @app.function
-def adicionar_restricoes_diarias(modelo, variaveis, dados):
-    ...
-
-
-@app.function
-def adicionar_objetivo_buracos(modelo, variaveis, dados):
+def adicionar_objetivo_buracos(modelo, x, dados):
     ...
 
 
@@ -435,7 +637,7 @@ def resolver_modelo(modelo, limite_segundos=None):
 
 
 @app.function
-def extrair_horario(solver, variaveis, dados):
+def extrair_horario(solver, x, dados):
     ...
 
 
