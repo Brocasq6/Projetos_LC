@@ -1372,6 +1372,82 @@ def _(carregar_dados, gerar_horario, apresentar_horario, mo):
     resultado
     return dados_csv, horario, estado, erros, resultado
 
+@app.cell
+def _(carregar_dados, horario, atualizar_horario, apresentar_horario, mo):
+    dados_novos = carregar_dados("dados_v2")
 
+    horario_h1, estado_h1, alteracoes = atualizar_horario(
+        horario,
+        dados_novos,
+    )
+
+    resultado_h1 = mo.vstack([
+        mo.md(f"**Estado do solver:** {estado_h1}"),
+        mo.md(f"**Aulas alteradas:** {alteracoes}"),
+        apresentar_horario(horario_h1),
+    ])
+
+    resultado_h1
+    return dados_novos, horario_h1, estado_h1, alteracoes, resultado_h1
+
+@app.cell
+def _(
+    horario,
+    dados_novos,
+    atualizar_horario,
+    gerar_horario,
+    contar_alteracoes,
+    validar_horario,
+    mo,
+):
+    from time import perf_counter
+
+    inicio = perf_counter()
+    h1_incremental, estado_incremental, alteracoes_incremental = (
+        atualizar_horario(horario, dados_novos)
+    )
+    tempo_incremental = perf_counter() - inicio
+
+    inicio = perf_counter()
+    h1_raiz, estado_raiz, erros_raiz = gerar_horario(dados_novos)
+    tempo_raiz = perf_counter() - inicio
+
+    alteracoes_raiz = contar_alteracoes(horario, h1_raiz)
+    erros_incremental = validar_horario(h1_incremental, dados_novos)
+
+    comparacao = mo.md(f"""
+    | Método | Estado | Tempo (s) | Aulas alteradas | Erros de validação |
+    |---|---|---:|---:|---:|
+    | Atualização incremental | {estado_incremental} | {tempo_incremental:.2f} | {alteracoes_incremental} | {len(erros_incremental)} |
+    | Resolução de raiz | {estado_raiz} | {tempo_raiz:.2f} | {alteracoes_raiz} | {len(erros_raiz)} |
+    """)
+
+    comparacao
+    return (
+        h1_incremental,
+        h1_raiz,
+        estado_incremental,
+        estado_raiz,
+        tempo_incremental,
+        tempo_raiz,
+        alteracoes_incremental,
+        alteracoes_raiz,
+        erros_incremental,
+        erros_raiz,
+        comparacao,
+    )
+
+@app.cell
+def _(h1_incremental, dados_novos, validar_horario, mo):
+    horario_teste = [aula.copy() for aula in h1_incremental]
+
+    # Repete uma aula no mesmo dia e período, criando um conflito.
+    horario_teste.append(horario_teste[0].copy())
+
+    erros_teste = validar_horario(horario_teste, dados_novos)
+
+    mo.md("**Erros encontrados no teste:**\n\n" + "\n".join(erros_teste))
+    return (erros_teste,)
+    
 if __name__ == "__main__":
     app.run()
