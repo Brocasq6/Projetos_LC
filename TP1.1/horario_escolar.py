@@ -522,11 +522,13 @@ def _(mo):
 
     **Resposta**
 
-    As restrições das turmas cobrem três regras do enunciado:
+    As restrições das turmas cobrem duas regras do enunciado:
 
     - **R1:** uma turma não pode ter duas aulas ao mesmo tempo.
     - **R2:** cada disciplina tem de cumprir a carga semanal daquela turma.
-    - **R3:** a mesma disciplina só pode ocorrer uma vez por dia para essa turma.
+
+    A regra **R3** (no máximo uma ocorrência diária da mesma disciplina por
+    turma) fica na função `adicionar_restricoes_diarias`.
 
     ## Representação das aulas
 
@@ -611,19 +613,231 @@ def adicionar_restricoes_turmas(modelo, x, dados):
                 modelo.Add(sum(aulas_a_decorrer) <= 1)
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    ### Registo de apoio — restantes restrições
+
+    **Prompt (16:10)**
+
+    > Ok, guia-me agora no resto das funções de restrições.
+
+    **Resposta do ChatGPT**
+
+    Vamos organizar as restrições por recurso. Usaremos esta convenção para `x`:
+
+    ```text
+    x[turma][disciplina][dia][período_de_início]
+    ```
+
+    Cada entrada é uma decisão do solver: a aula começa nesse período ou não.
+    Para uma aula dupla, só criamos opções de início nos períodos 1 a 4; se
+    começar no período 3, ocupa os períodos 3 e 4. Isso faz parte da forma de
+    construir `x` e já ajuda a cumprir R4.
+
+    Cada função de restrições recebe o mesmo modelo, `x` e os dados preparados.
+    Dentro dela, `modelo.Add(...)` acrescenta condições que o horário tem de
+    respeitar.
+
+    #### Restrições das turmas
+
+    A função `adicionar_restricoes_turmas(modelo, x, dados)` trata três regras:
+
+    - **R2 — carga semanal:** para cada turma e disciplina, somar as aulas
+      escolhidas. Aulas simples contam 1 período e duplas contam 2. A soma tem
+      de ser igual à carga semanal.
+    - **R3 — no máximo uma ocorrência diária:** para cada turma, disciplina e
+      dia, a soma das opções escolhidas nesse dia tem de ser no máximo 1.
+    - **R1 — sem conflitos na turma:** para cada turma, dia e período, somar as
+      aulas que ocupam esse período. O resultado tem de ser no máximo 1. Para
+      uma aula dupla, conta tanto no início como no período seguinte.
+
+    **R4** fica garantida se `x` só tiver opções de início válidas para aulas
+    duplas e essas aulas ocuparem sempre dois períodos consecutivos.
+
+    #### Restrições dos professores
+
+    A função `adicionar_restricoes_professores(modelo, x, dados)` trata:
+
+    - **R5 — sem conflitos:** em cada dia e período, somar as aulas que ocupam
+      esse período e pertencem ao mesmo professor. O total tem de ser no máximo
+      1.
+    - **R6 — disponibilidade:** se uma aula calhar num período em que o
+      professor não está disponível, essa opção de `x` tem de ser proibida.
+      Para uma aula dupla, verifica-se também o período seguinte.
+
+    #### Restrições das salas
+
+    A função `adicionar_restricoes_salas(modelo, x, dados)` trata a capacidade
+    e a compatibilidade das salas:
+
+    - Em cada dia e período, conta as aulas que precisam de cada recurso.
+    - O total não pode ultrapassar a quantidade disponível em `salas.csv`.
+    - Aulas sem sala especial usam a capacidade normal; aulas com uma sala
+      especial só contam para essa sala, como Laboratório ou Ginásio.
+
+    Se quiserem apresentar o nome exato da sala em cada aula, terão de decidir
+    como atribuí-lo depois. Se as salas de um tipo forem equivalentes, podem
+    primeiro garantir a capacidade com estas contagens.
+
+    **R8** não é uma restrição do solver: cumpre-se carregando os dados dos
+    CSV, como já fizeram.
+
+    A ordem de implementação pode ser: carga semanal (R2), limite diário (R3),
+    conflitos das turmas (R1), conflitos e disponibilidade dos professores
+    (R5–R6), e capacidade das salas (R7). Antes de programarmos a primeira
+    função, precisamos de ter `x` construído com essa convenção.
+
+    **Nota sobre a implementação atual:** R3 está separada na função
+    `adicionar_restricoes_diarias`; a função das turmas implementa R1 e R2.
+
+    """
+    )
+    return
+
+
 @app.function
 def adicionar_restricoes_professores(modelo, x, dados):
-    ...
+    turmas, disciplinas, _, excecoes = dados
+    dias = ["Seg", "Ter", "Qua", "Qui", "Sex"]
+
+    # Guardamos as indisponibilidades para poder consultá-las rapidamente.
+    indisponibilidades = {
+        (excecao["professor"], excecao["dia"], excecao["periodo"])
+        for excecao in excecoes
+    }
+
+    # Um professor não pode estar em duas turmas no mesmo período.
+    for professor in {disciplina["professor"] for disciplina in disciplinas}:
+        for dia in dias:
+            for periodo in range(1, 6):
+                aulas_do_professor = []
+
+                for turma in turmas:
+                    for disciplina in disciplinas:
+                        if disciplina["professor"] != professor:
+                            continue
+
+                        nome = disciplina["disciplina"]
+
+                        # Aula que começa neste período.
+                        if periodo in x[turma][nome][dia]:
+                            aulas_do_professor.append(x[turma][nome][dia][periodo])
+
+                        # Aula dupla que começou no período anterior.
+                        if disciplina["duplo_periodo"] and periodo > 1:
+                            inicio_anterior = periodo - 1
+                            if inicio_anterior in x[turma][nome][dia]:
+                                aulas_do_professor.append(
+                                    x[turma][nome][dia][inicio_anterior]
+                                )
+
+                modelo.Add(sum(aulas_do_professor) <= 1)
+
+    # Nenhuma aula pode ocupar um período em que o professor está indisponível.
+    for turma in turmas:
+        for disciplina in disciplinas:
+            professor = disciplina["professor"]
+            nome = disciplina["disciplina"]
+
+            for dia in dias:
+                for inicio, colocacao in x[turma][nome][dia].items():
+                    periodos_ocupados = [inicio]
+                    if disciplina["duplo_periodo"]:
+                        periodos_ocupados.append(inicio + 1)
+
+                    if any(
+                        (professor, dia, periodo) in indisponibilidades
+                        for periodo in periodos_ocupados
+                    ):
+                        modelo.Add(colocacao == 0)
 
 
 @app.function
 def adicionar_restricoes_salas(modelo, x, dados):
-    ...
+    turmas, disciplinas, salas, _ = dados
+    dias = ["Seg", "Ter", "Qua", "Qui", "Sex"]
+
+    # As salas normais formam uma capacidade partilhada.
+    quantidade_normais = sum(
+        sala["quantidade"] for sala in salas if sala["tipo"] == "normal"
+    )
+
+    # Em cada período, não podemos exceder a quantidade de salas normais.
+    if quantidade_normais > 0:
+        for dia in dias:
+            for periodo in range(1, 6):
+                aulas_em_salas_normais = []
+
+                for turma in turmas:
+                    for disciplina in disciplinas:
+                        if disciplina["sala_especial"] is not None:
+                            continue
+
+                        nome = disciplina["disciplina"]
+
+                        if periodo in x[turma][nome][dia]:
+                            aulas_em_salas_normais.append(
+                                x[turma][nome][dia][periodo]
+                            )
+
+                        if disciplina["duplo_periodo"] and periodo > 1:
+                            inicio_anterior = periodo - 1
+                            if inicio_anterior in x[turma][nome][dia]:
+                                aulas_em_salas_normais.append(
+                                    x[turma][nome][dia][inicio_anterior]
+                                )
+
+                modelo.Add(sum(aulas_em_salas_normais) <= quantidade_normais)
+
+    # Cada sala especial só pode ser usada até à sua capacidade.
+    for sala in salas:
+        if sala["tipo"] != "especial":
+            continue
+
+        for dia in dias:
+            for periodo in range(1, 6):
+                aulas_na_sala = []
+
+                for turma in turmas:
+                    for disciplina in disciplinas:
+                        if disciplina["sala_especial"] != sala["sala"]:
+                            continue
+
+                        nome = disciplina["disciplina"]
+
+                        if periodo in x[turma][nome][dia]:
+                            aulas_na_sala.append(x[turma][nome][dia][periodo])
+
+                        if disciplina["duplo_periodo"] and periodo > 1:
+                            inicio_anterior = periodo - 1
+                            if inicio_anterior in x[turma][nome][dia]:
+                                aulas_na_sala.append(
+                                    x[turma][nome][dia][inicio_anterior]
+                                )
+
+                modelo.Add(sum(aulas_na_sala) <= sala["quantidade"])
 
 
 @app.function
 def adicionar_restricoes_diarias(modelo, x, dados):
-    ...
+    turmas, disciplinas, _, _ = dados
+    dias = ["Seg", "Ter", "Qua", "Qui", "Sex"]
+
+    # Cada disciplina só pode ter uma ocorrência por dia em cada turma.
+    for turma in turmas:
+        for disciplina in disciplinas:
+            nome = disciplina["disciplina"]
+
+            for dia in dias:
+                colocacoes_do_dia = []
+
+                for periodo in range(1, 6):
+                    if periodo in x[turma][nome][dia]:
+                        colocacoes_do_dia.append(x[turma][nome][dia][periodo])
+
+                modelo.Add(sum(colocacoes_do_dia) <= 1)
 
 
 @app.function
