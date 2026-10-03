@@ -19,12 +19,6 @@ def _():
     return (mo,)
 
 
-@app.cell
-def _():
-    from ortools.sat.python import cp_model
-    return (cp_model,)
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -218,7 +212,7 @@ def _(mo):
     Depois das restrições, acrescentam o objetivo de reduzir os «buracos» dos professores — tempos livres entre a primeira e a última aula num dia.
 
     ```python
-    def adicionar_objetivo_buracos(modelo, x, dados):
+    def adicionar_objetivo_buracos(modelo, x, dados, tempos):
         ...
     ```
 
@@ -482,32 +476,34 @@ def _(mo):
     )
     return
 
-@app.cell
-def _(cp_model):
-    def criar_modelo(dados, tempos):
-        turmas, disciplinas, _, _ = dados
-        modelo = cp_model.CpModel()
-        x = {}
 
-        for i_turma, turma in enumerate(turmas):
-            x[turma] = {}
+@app.function
+def criar_modelo(dados, tempos):
+    from ortools.sat.python import cp_model
 
-            for i_disciplina, disciplina in enumerate(disciplinas):
-                nome = disciplina["disciplina"]
-                x[turma][nome] = {}
+    turmas, disciplinas, _, _ = dados
+    modelo = cp_model.CpModel()
+    x = {}
 
-                for dia, periodo in tempos:
-                    if dia not in x[turma][nome]:
-                        x[turma][nome][dia] = {}
+    for i_turma, turma in enumerate(turmas):
+        x[turma] = {}
 
-                    if disciplina["duplo_periodo"] and periodo == 5:
-                        continue
+        for i_disciplina, disciplina in enumerate(disciplinas):
+            nome = disciplina["disciplina"]
+            x[turma][nome] = {}
 
-                    nome_variavel = f"x_{i_turma}_{i_disciplina}_{dia}_{periodo}"
-                    x[turma][nome][dia][periodo] = modelo.NewBoolVar(nome_variavel)
+            for dia, periodo in tempos:
+                if dia not in x[turma][nome]:
+                    x[turma][nome][dia] = {}
 
-        return modelo, x
-    return (criar_modelo,)
+                if disciplina["duplo_periodo"] and periodo == 5:
+                    continue
+
+                nome_variavel = f"x_{i_turma}_{i_disciplina}_{dia}_{periodo}"
+                x[turma][nome][dia][periodo] = modelo.NewBoolVar(nome_variavel)
+
+    return modelo, x
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -567,6 +563,7 @@ def _(mo):
     """
     )
     return
+
 
 @app.function
 def adicionar_restricoes_turmas(modelo, x, dados):
@@ -691,7 +688,6 @@ def _(mo):
 
     **Nota sobre a implementação atual:** R3 está separada na função
     `adicionar_restricoes_diarias`; a função das turmas implementa R1 e R2.
-
     """
     )
     return
@@ -840,39 +836,541 @@ def adicionar_restricoes_diarias(modelo, x, dados):
                 modelo.Add(sum(colocacoes_do_dia) <= 1)
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    ### Registo de apoio — objetivo dos buracos
+
+    A função deve pedir ao solver para minimizar os tempos livres **entre** a
+    primeira e a última aula de cada professor em cada dia. Os períodos livres
+    antes da primeira aula ou depois da última não contam como buracos.
+
+    A lógica é:
+
+    1. Para cada professor, dia e período, determinar se há uma aula nesse
+       período. Uma aula dupla ocupa o seu período de início e o seguinte.
+    2. Considerar como possível buraco cada período interior — períodos 2, 3 e
+       4.
+    3. Um período é buraco se o professor tiver pelo menos uma aula antes, pelo
+       menos uma aula depois e estiver livre nesse período.
+    4. Minimizar a soma desses buracos para todos os professores e dias.
+
+    A função terá uma forma semelhante a:
+
+    ```python
+    def adicionar_objetivo_buracos(modelo, x, dados, tempos):
+        ...
+    ```
+
+    Para representar «há aula antes», «há aula depois» e «este período é um
+    buraco», provavelmente vais precisar de algumas variáveis auxiliares
+    booleanas. Elas não representam aulas novas; servem apenas para o solver
+    calcular o objetivo a partir de `x`.
+
+    Depois desta função, a sequência será: executar o solver
+    (`resolver_modelo`), extrair as aulas escolhidas (`extrair_horario`),
+    apresentar o horário, validá-lo e, por fim, implementar a atualização
+    incremental e comparar `H0` com `H1`.
+
+    *Registo da conversa: 16:38.*
+    """
+    )
+    return
+
+
 @app.function
-def adicionar_objetivo_buracos(modelo, x, dados):
-    ...
+def adicionar_objetivo_buracos(modelo, x, dados, tempos):
+    turmas, disciplinas, _, _ = dados
+    dias = []
+    periodos = []
+    for dia, periodo in tempos:
+        if dia not in dias:
+            dias.append(dia)
+        if periodo not in periodos:
+            periodos.append(periodo)
+
+    periodos.sort()
+    professores = sorted({disciplina["professor"] for disciplina in disciplinas})
+    buracos = []
+
+    for i_professor, professor in enumerate(professores):
+        for dia in dias:
+            aulas_por_periodo = []
+
+            # Criamos uma variável que indica se o professor tem aula em cada período.
+            for periodo in periodos:
+                colocacoes = []
+
+                for turma in turmas:
+                    for disciplina in disciplinas:
+                        if disciplina["professor"] != professor:
+                            continue
+
+                        nome = disciplina["disciplina"]
+
+                        if periodo in x[turma][nome][dia]:
+                            colocacoes.append(x[turma][nome][dia][periodo])
+
+                        if disciplina["duplo_periodo"] and periodo > 1:
+                            inicio_anterior = periodo - 1
+                            if inicio_anterior in x[turma][nome][dia]:
+                                colocacoes.append(
+                                    x[turma][nome][dia][inicio_anterior]
+                                )
+
+                tem_aula = modelo.NewBoolVar(
+                    f"professor_{i_professor}_{dia}_{periodo}_tem_aula"
+                )
+                modelo.Add(sum(colocacoes) >= tem_aula)
+                modelo.Add(sum(colocacoes) <= len(colocacoes) * tem_aula)
+                aulas_por_periodo.append(tem_aula)
+
+            # Um buraco existe se há aula antes e depois, mas não neste período.
+            for indice in range(1, len(periodos) - 1):
+                periodo = periodos[indice]
+                antes = modelo.NewBoolVar(
+                    f"professor_{i_professor}_{dia}_{periodo}_aula_antes"
+                )
+                depois = modelo.NewBoolVar(
+                    f"professor_{i_professor}_{dia}_{periodo}_aula_depois"
+                )
+                buraco = modelo.NewBoolVar(
+                    f"professor_{i_professor}_{dia}_{periodo}_buraco"
+                )
+
+                periodos_antes = aulas_por_periodo[:indice]
+                periodos_depois = aulas_por_periodo[indice + 1:]
+
+                for tem_aula in periodos_antes:
+                    modelo.Add(antes >= tem_aula)
+                modelo.Add(antes <= sum(periodos_antes))
+
+                for tem_aula in periodos_depois:
+                    modelo.Add(depois >= tem_aula)
+                modelo.Add(depois <= sum(periodos_depois))
+
+                modelo.Add(buraco <= antes)
+                modelo.Add(buraco <= depois)
+                modelo.Add(buraco + aulas_por_periodo[indice] <= 1)
+                modelo.Add(
+                    buraco
+                    >= antes + depois - aulas_por_periodo[indice] - 1
+                )
+                buracos.append(buraco)
+
+    modelo.Minimize(sum(buracos))
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    ### Registo de apoio — funções finais
+
+    **Prompt (16:41)**
+
+    > Prossegue e guia-me no resto das funções.
+
+    **Resposta do ChatGPT**
+
+    Claro. Depois de `adicionar_objetivo_buracos`, o trabalho passa das regras
+    do modelo para **resolver, ler e avaliar a solução**. Vamos fazer uma
+    função de cada vez, para poderes implementar e perceber cada etapa.
+
+    #### 1. `resolver_modelo(modelo)`
+
+    Cria o solver CP-SAT, pede-lhe para resolver o modelo e devolve o resultado.
+    O resultado inclui um estado:
+
+    - `OPTIMAL`: encontrou a melhor solução segundo o objetivo;
+    - `FEASIBLE`: encontrou uma solução válida, mas não provou que seja a melhor;
+    - `INFEASIBLE`: as restrições não permitem nenhum horário;
+    - `UNKNOWN`: não conseguiu determinar uma solução.
+
+    Só passamos à extração do horário se houver uma solução válida
+    (`OPTIMAL` ou `FEASIBLE`).
+
+    #### 2. `extrair_horario(solver, x, dados)`
+
+    Percorre a estrutura `x`. Para cada decisão escolhida pelo solver, cria uma
+    entrada legível com a turma, disciplina, professor, dia e período.
+
+    Para uma aula dupla, a entrada tem de representar que ocupa o período inicial
+    **e o seguinte**. Também será preciso decidir como atribuir o nome concreto
+    da sala, caso o modelo só controle a capacidade por tipo de sala.
+
+    #### 3. `apresentar_horario(horario)`
+
+    Recebe a lista criada por `extrair_horario` e mostra-a de forma clara no
+    Marimo. Por exemplo, uma tabela ordenada por turma, dia e período.
+
+    #### 4. `validar_horario(horario, dados)`
+
+    Verifica o horário gerado independentemente do solver: cargas semanais,
+    conflitos, indisponibilidades, aulas duplas e salas. Idealmente, devolve
+    uma lista de erros; se estiver vazia, o horário passou nas verificações
+    implementadas.
+
+    #### 5. `contar_alteracoes(horario_antigo, horario_novo)`
+
+    Compara `H0` e `H1` e conta as aulas que mudaram de período ou sala. Para
+    fazer uma comparação coerente, é preciso emparelhar ocorrências da mesma
+    turma e disciplina, incluindo disciplinas com várias aulas por semana.
+
+    #### 6. `atualizar_horario(horario_antigo, dados_novos)`
+
+    Constrói e resolve um horário com os dados alterados, tentando manter as
+    aulas de `H0` que continuam válidas. Depois, comparamos o tempo de resolução
+    e as aulas alteradas com um `H1` gerado do zero.
+
+    O próximo passo concreto é escrever `resolver_modelo`. Para orientar a
+    assinatura pelo teu código, envia-me a função que cria o modelo e acrescenta
+    o objetivo, ou pelo menos diz-me que valores ela devolve.
+
+    *Registo: a resposta foi indicada como tendo demorado 53 segundos.*
+
+    **Nota atual:** as funções descritas acima já foram implementadas no
+    notebook; a última pergunta do registo ficou ultrapassada.
+    """
+    )
+    return
 
 
 @app.function
 def resolver_modelo(modelo, limite_segundos=None):
-    ...
+    from ortools.sat.python import cp_model
+
+    solver = cp_model.CpSolver()
+
+    if limite_segundos is not None:
+        solver.parameters.max_time_in_seconds = limite_segundos
+
+    estado = solver.Solve(modelo)
+    return solver, estado
+
+
+@app.function
+def gerar_horario(dados_csv, limite_segundos=None):
+    dados = preparar_dados(dados_csv)
+    tempos = criar_tempos()
+    modelo, x = criar_modelo(dados, tempos)
+
+    adicionar_restricoes_turmas(modelo, x, dados)
+    adicionar_restricoes_professores(modelo, x, dados)
+    adicionar_restricoes_salas(modelo, x, dados)
+    adicionar_restricoes_diarias(modelo, x, dados)
+    adicionar_objetivo_buracos(modelo, x, dados, tempos)
+
+    solver, estado = resolver_modelo(modelo, limite_segundos)
+
+    from ortools.sat.python import cp_model
+    if estado in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        horario = extrair_horario(solver, x, dados)
+        erros = validar_horario(horario, dados)
+    else:
+        horario = []
+        erros = ["O solver não encontrou um horário válido."]
+
+    return horario, solver.StatusName(estado), erros
 
 
 @app.function
 def extrair_horario(solver, x, dados):
-    ...
+    _, disciplinas, salas, _ = dados
+    dias = ["Seg", "Ter", "Qua", "Qui", "Sex"]
+    disciplinas_por_nome = {
+        disciplina["disciplina"]: disciplina for disciplina in disciplinas
+    }
+    sala_normal = next(
+        (sala["sala"] for sala in salas if sala["tipo"] == "normal"),
+        "Sala Normal",
+    )
+
+    horario = []
+
+    for turma, disciplinas_da_turma in x.items():
+        for nome, dias_da_disciplina in disciplinas_da_turma.items():
+            disciplina = disciplinas_por_nome[nome]
+            numero_ocorrencia = 0
+
+            for dia in dias:
+                for inicio, colocacao in sorted(dias_da_disciplina[dia].items()):
+                    if solver.Value(colocacao):
+                        numero_ocorrencia += 1
+                        horario.append({
+                            "id": (turma, nome, numero_ocorrencia),
+                            "turma": turma,
+                            "disciplina": nome,
+                            "professor": disciplina["professor"],
+                            "dia": dia,
+                            "periodo": inicio,
+                            "duracao": 2 if disciplina["duplo_periodo"] else 1,
+                            "sala": disciplina["sala_especial"] or sala_normal,
+                        })
+
+    return horario
 
 
 @app.function
 def apresentar_horario(horario):
-    ...
+    import pandas as pd
+
+    colunas = [
+        "turma", "dia", "periodo", "duracao", "disciplina", "professor", "sala"
+    ]
+    if not horario:
+        return pd.DataFrame(columns=colunas)
+
+    tabela = pd.DataFrame(horario)
+    ordem_dias = {"Seg": 0, "Ter": 1, "Qua": 2, "Qui": 3, "Sex": 4}
+    tabela["ordem_dia"] = tabela["dia"].map(ordem_dias)
+    tabela = tabela.sort_values(["turma", "ordem_dia", "periodo"])
+    return tabela[colunas].reset_index(drop=True)
 
 
 @app.function
 def validar_horario(horario, dados):
-    ...
+    turmas, disciplinas, salas, excecoes = dados
+    dias_validos = {"Seg", "Ter", "Qua", "Qui", "Sex"}
+    disciplinas_por_nome = {
+        disciplina["disciplina"]: disciplina for disciplina in disciplinas
+    }
+    indisponibilidades = {
+        (excecao["professor"], excecao["dia"], excecao["periodo"])
+        for excecao in excecoes
+    }
+    capacidade_normal = sum(
+        sala["quantidade"] for sala in salas if sala["tipo"] == "normal"
+    )
+    capacidades_especiais = {
+        sala["sala"]: sala["quantidade"]
+        for sala in salas
+        if sala["tipo"] == "especial"
+    }
+
+    erros = []
+    cargas = {}
+    ocorrencias_diarias = {}
+    ocupacao_turmas = {}
+    ocupacao_professores = {}
+    ocupacao_salas = {}
+    for aula in horario:
+        turma = aula["turma"]
+        nome = aula["disciplina"]
+        dia = aula["dia"]
+        inicio = aula["periodo"]
+
+        if turma not in turmas:
+            erros.append(f"Turma desconhecida: {turma}")
+            continue
+        if nome not in disciplinas_por_nome:
+            erros.append(f"Disciplina desconhecida: {nome}")
+            continue
+
+        disciplina = disciplinas_por_nome[nome]
+        professor = disciplina["professor"]
+        duracao_esperada = 2 if disciplina["duplo_periodo"] else 1
+
+        if aula["duracao"] != duracao_esperada:
+            erros.append(f"Duração incorreta para {turma} - {nome}")
+        if dia not in dias_validos or inicio not in range(1, 6):
+            erros.append(f"Dia ou período inválido para {turma} - {nome}")
+            continue
+        if disciplina["duplo_periodo"] and inicio == 5:
+            erros.append(f"Aula dupla começa no último período: {turma} - {nome}")
+            continue
+
+        sala_esperada = disciplina["sala_especial"] or next(
+            (sala["sala"] for sala in salas if sala["tipo"] == "normal"),
+            None,
+        )
+        if aula["sala"] != sala_esperada:
+            erros.append(f"Sala incompatível para {turma} - {nome}")
+
+        chave_carga = (turma, nome)
+        cargas[chave_carga] = cargas.get(chave_carga, 0) + duracao_esperada
+
+        chave_diaria = (turma, nome, dia)
+        ocorrencias_diarias[chave_diaria] = (
+            ocorrencias_diarias.get(chave_diaria, 0) + 1
+        )
+
+        for periodo in range(inicio, inicio + duracao_esperada):
+            chave_turma = (turma, dia, periodo)
+            ocupacao_turmas.setdefault(chave_turma, []).append(nome)
+
+            chave_professor = (professor, dia, periodo)
+            ocupacao_professores.setdefault(chave_professor, []).append(nome)
+
+            if (professor, dia, periodo) in indisponibilidades:
+                erros.append(
+                    f"{professor} indisponível em {dia}, período {periodo}"
+                )
+
+            recurso = disciplina["sala_especial"] or "normal"
+            chave_sala = (recurso, dia, periodo)
+            ocupacao_salas.setdefault(chave_sala, []).append(nome)
+
+    # Carga semanal exata para cada turma e disciplina.
+    for turma in turmas:
+        for disciplina in disciplinas:
+            chave = (turma, disciplina["disciplina"])
+            carga_obtida = cargas.get(chave, 0)
+            if carga_obtida != disciplina["carga_semanal"]:
+                erros.append(
+                    f"Carga semanal incorreta para {turma} - "
+                    f"{disciplina['disciplina']}: {carga_obtida} em vez de "
+                    f"{disciplina['carga_semanal']}"
+                )
+
+    for (turma, dia, periodo), aulas_no_periodo in ocupacao_turmas.items():
+        if len(aulas_no_periodo) > 1:
+            erros.append(f"Sobreposição na turma {turma}, {dia}, período {periodo}")
+
+    for (professor, dia, periodo), aulas_no_periodo in ocupacao_professores.items():
+        if len(aulas_no_periodo) > 1:
+            erros.append(
+                f"Sobreposição do professor {professor}, {dia}, período {periodo}"
+            )
+
+    for (turma, nome, dia), quantidade in ocorrencias_diarias.items():
+        if quantidade > 1:
+            erros.append(
+                f"Mais de uma ocorrência de {nome} para {turma} à {dia}"
+            )
+
+    for (recurso, dia, periodo), aulas_no_periodo in ocupacao_salas.items():
+        if recurso == "normal":
+            capacidade = capacidade_normal
+        else:
+            capacidade = capacidades_especiais.get(recurso, 0)
+
+        if len(aulas_no_periodo) > capacidade:
+            erros.append(
+                f"Capacidade excedida na sala {recurso}, {dia}, período {periodo}"
+            )
+
+    return erros
 
 
 @app.function
 def contar_alteracoes(horario_antigo, horario_novo):
-    ...
+    def colocacoes_por_disciplina(horario):
+        colocacoes = {}
+
+        for aula in horario:
+            chave = (aula["turma"], aula["disciplina"])
+            colocacao = (aula["dia"], aula["periodo"], aula["sala"])
+            colocacoes.setdefault(chave, []).append(colocacao)
+
+        return colocacoes
+
+    antigos = colocacoes_por_disciplina(horario_antigo)
+    novos = colocacoes_por_disciplina(horario_novo)
+    disciplinas = set(antigos) | set(novos)
+    alteracoes = 0
+
+    for chave in disciplinas:
+        colocacoes_antigas = antigos.get(chave, [])
+        colocacoes_novas = novos.get(chave, [])
+        colocacoes_iguais = sum(
+            colocacao in colocacoes_novas for colocacao in colocacoes_antigas
+        )
+        alteracoes += max(len(colocacoes_antigas), len(colocacoes_novas))
+        alteracoes -= colocacoes_iguais
+
+    return alteracoes
 
 
 @app.function
-def atualizar_horario(horario_antigo, dados_novos):
-    ...
+def atualizar_horario(horario_antigo, dados_novos, limite_segundos=None):
+    from ortools.sat.python import cp_model
+
+    dados = preparar_dados(dados_novos)
+    modelo, x = criar_modelo(dados, criar_tempos())
+
+    adicionar_restricoes_turmas(modelo, x, dados)
+    adicionar_restricoes_professores(modelo, x, dados)
+    adicionar_restricoes_salas(modelo, x, dados)
+    adicionar_restricoes_diarias(modelo, x, dados)
+
+    # Damos ao solver o horário anterior como ponto de partida.
+    posicoes_antigas = {
+        (aula["turma"], aula["disciplina"], aula["dia"], aula["periodo"])
+        for aula in horario_antigo
+    }
+    colocacoes_mantidas = []
+
+    for turma, disciplinas_da_turma in x.items():
+        for nome, dias_da_disciplina in disciplinas_da_turma.items():
+            for dia, colocacoes_do_dia in dias_da_disciplina.items():
+                for inicio, colocacao in colocacoes_do_dia.items():
+                    chave = (turma, nome, dia, inicio)
+                    valor_hint = 1 if chave in posicoes_antigas else 0
+                    modelo.AddHint(colocacao, valor_hint)
+
+                    if chave in posicoes_antigas:
+                        colocacoes_mantidas.append(colocacao)
+
+    # Maximizar as colocações antigas que continuam no mesmo horário.
+    modelo.Maximize(sum(colocacoes_mantidas))
+
+    solver = cp_model.CpSolver()
+    if limite_segundos is not None:
+        solver.parameters.max_time_in_seconds = limite_segundos
+    estado = solver.Solve(modelo)
+
+    if estado in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        horario_novo = extrair_horario(solver, x, dados)
+        erros = validar_horario(horario_novo, dados)
+        if erros:
+            raise ValueError("O novo horário falhou na validação:\n" + "\n".join(erros))
+    else:
+        horario_novo = []
+
+    alteracoes = contar_alteracoes(horario_antigo, horario_novo)
+    return horario_novo, solver.StatusName(estado), alteracoes
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+    **Prompt (ChatGPT):**
+
+    > Ok. Agora que está tudo feito, quais são os próximos passos para fechar o projeto?
+
+    **Resposta do LLM:**
+
+    Se as funções já estão implementadas, falta **integrá-las, demonstrar que cumprem o enunciado e preparar a entrega**. Sugiro esta ordem:
+
+    1. **Montar o fluxo completo no notebook**
+       - Carregar e preparar `dados/`.
+       - Gerar e apresentar `H0`.
+       - Carregar e preparar `dados_v2/`.
+       - Gerar e apresentar `H1` aproveitando `H0`.
+    """
+    )
+    return
+
+
+@app.cell
+def _(carregar_dados, gerar_horario, apresentar_horario, mo):
+    dados_csv = carregar_dados("dados")
+    horario, estado, erros = gerar_horario(dados_csv)
+
+    resultado = mo.vstack([
+        mo.md(f"**Estado do solver:** {estado}"),
+        mo.md(
+            "**Erros de validação:** " + "; ".join(erros)
+            if erros else "**Validação:** sem erros"
+        ),
+        apresentar_horario(horario),
+    ])
+
+    resultado
+    return dados_csv, horario, estado, erros, resultado
 
 
 if __name__ == "__main__":
