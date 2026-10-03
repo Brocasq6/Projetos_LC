@@ -15,9 +15,10 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
+    import random
     from ortools.sat.python import cp_model
 
-    return (cp_model,)
+    return cp_model, mo, random
 
 
 @app.class_definition
@@ -173,11 +174,10 @@ class path(box):
 
 
 @app.cell
-def _():
-    import random
-
+def _(random):
     def pistas_random(n, k=None, seed=None):
         N = n * n
+        gerador = random.Random(seed)
 
         # se nao derem k, usar n pistas
         if k == None:
@@ -186,9 +186,6 @@ def _():
         # como os valores sao todos diferentes, nao da para ter mais de N pistas
         if k < 0 or k > N:
             raise ValueError("k tem de estar entre 0 e " + str(N))
-
-        # gerador de numeros aleatorios (com seed para dar sempre o mesmo resultado)
-        gerador = random.Random(seed)
 
         # lista com todas as celulas da grelha
         todas_celulas = []
@@ -213,7 +210,8 @@ def _():
             b.add(l, c, valores[x])
         return b
 
-    return
+
+    return (pistas_random,)
 
 
 @app.cell
@@ -279,6 +277,241 @@ def _(cp_model):
 
             return grelha
 
+    return (Modelo,)
+
+
+@app.cell
+def _(Modelo, pistas_random):
+    def montar_sudoku(n, pistas):
+        N = n * n
+        m = Modelo(n)
+
+        # todas as linhas
+        for l in range(N):
+            m.add(path((l, 0), (l, N - 1), n))
+
+        # todas as colunas
+        for c in range(N):
+            m.add(path((0, c), (N - 1, c), n))
+
+        # todos os blocos n x n
+        for i in range(n):
+            for j in range(n):
+                m.add(cube(i, j, n))
+
+        # as pistas sao so mais um grupo
+        m.add(pistas)
+        return m
+
+    def resolver_sudoku(n, k=None, seed=None, tentativas=10):
+        # se as pistas derem um puzzle impossivel, tentar outras
+        for t in range(tentativas):
+            if seed == None:
+                s = None
+            else:
+                s = seed + t
+
+            pistas = pistas_random(n, k, s)
+            grelha = montar_sudoku(n, pistas).solve()
+
+            if grelha != None:
+                return pistas, grelha
+
+        # desistir ao fim de varias tentativas
+        return pistas, None
+
+    return (resolver_sudoku,)
+
+
+@app.function
+def mostrar_sudoku(grelha, n):
+    if grelha == None:
+        return "sem solucao"
+
+    N = n * n
+    texto = ""
+
+    for l in range(N):
+        # linha de tracos entre blocos
+        if l % n == 0 and l != 0:
+            texto = texto + "-" * (N * 3 + (n - 1) * 2) + "\n"
+
+        for c in range(N):
+            # barra entre blocos
+            if c % n == 0 and c != 0:
+                texto = texto + "| "
+
+            valor = grelha[l][c]
+            if valor == 0:
+                texto = texto + " . "
+            else:
+                texto = texto + str(valor).rjust(2) + " "
+
+        texto = texto + "\n"
+
+    return texto
+
+
+@app.function
+def valores_corretos(valores,N): #verificar que todos os valores da lista estao entre 1 e N e que a lista tem N valroes.
+    if len(valores) != N:
+        return False
+    for valor in range(1,N+1):
+        if valor not in valores:
+            return False
+    return True
+
+
+@app.function
+def validar_grelha(grelha, n):
+    N = n * n
+    erros = []
+
+    for linha in range(N):
+        if not valores_corretos(grelha[linha], N):
+            erros.append("a linha " + str(linha) + " está errada")
+
+    for coluna in range(N):
+        colunas = []
+        for linha in range(N):
+            colunas.append(grelha[linha][coluna])
+        if not valores_corretos(colunas, N):
+            erros.append("a coluna " + str(coluna) + " está errada")
+
+    for i in range(n):
+        for j in range(n):
+            bloco = []
+            for linha in range(i * n, i * n + n):
+                for coluna in range(j * n, j * n + n):
+                    bloco.append(grelha[linha][coluna])
+            if not valores_corretos(bloco, N):
+                erros.append("o bloco (" + str(i) + ", " + str(j) + ") está errado")
+
+    return erros
+
+
+@app.function
+def validar_pistas(grelha, pistas):
+    erros = []
+    pistas_fixas = pistas.fixas()
+
+    for pos in pistas_fixas:
+        linha = pos[0]
+        coluna = pos[1]
+
+        if grelha[linha][coluna] != pistas_fixas[pos]:
+            erros.append("a pista em " + str(pos) + " foi alterada")
+    return erros
+
+
+@app.function
+def verificar_add(n):
+    N = n * n
+    falhas = []
+
+    caso_mau = [
+        (-1, 0, None), (N, 0, None),
+        (0, -1, None), (0, N, None),
+        (0, 0, 0), (0, 0, N + 1)
+    ]
+
+    for caso in caso_mau:
+        b = box(None, n)
+        try:
+            b.add(caso[0], caso[1], caso[2])         # <- era box.add(...)
+            falhas.append("add" + str(caso) + " devia ter dado erro")
+        except (IndexError, ValueError):
+            pass
+
+    caso_bom = [(0, 0, 1), (N - 1, N - 1, N), (0, N - 1, None)]
+
+    for caso in caso_bom:
+        b = box(None, n)
+        try:
+            b.add(caso[0], caso[1], caso[2])
+        except (IndexError, ValueError):
+            falhas.append("add" + str(caso) + " nao devia ter dado erro")
+
+    return falhas
+
+
+@app.cell
+def _(resolver_sudoku):
+    total_falhas = 0
+
+    for numero_teste in [2, 3]:
+        print("===== n =", numero_teste, "=====")
+
+        # 1. o add rejeita o que deve rejeitar
+        falhas_add = verificar_add(numero_teste)
+        if len(falhas_add) == 0:
+            print("add: OK")
+        else:
+            print("add: FALHOU", falhas_add)
+            total_falhas = total_falhas + 1
+
+        # 2. fluxo completo com varias seeds
+        for seed_teste in range(5):
+            pistas_t, grelha_t = resolver_sudoku(numero_teste, seed=seed_teste)
+            if grelha_t == None:
+                print("seed", seed_teste, ": sem solucao")
+                continue
+            erros = validar_grelha(grelha_t, numero_teste) + validar_pistas(grelha_t, pistas_t)
+            if len(erros) == 0:
+                print("seed", seed_teste, ": OK")
+            else:
+                print("seed", seed_teste, ": FALHOU", erros)
+                total_falhas = total_falhas + 1
+
+        # 3. o validador apanha uma grelha estragada
+        pistas_t, grelha_t = resolver_sudoku(numero_teste, seed=0)
+        estragada = []
+        for linha in grelha_t:
+            estragada.append(list(linha))
+        estragada[0][0] = grelha_t[1][0]
+        if len(validar_grelha(estragada, numero_teste)) > 0:
+            print("validador apanha grelha errada: OK")
+        else:
+            print("validador apanha grelha errada: FALHOU")
+            total_falhas = total_falhas + 1
+
+    print()
+    if total_falhas == 0:
+        print("TODOS OS TESTES PASSARAM")
+    else:
+        print(total_falhas, "TESTE(S) FALHARAM")
+    return
+
+
+@app.cell
+def _(mo):
+    slider_sudoku = mo.ui.slider(1, 1000, label="sudoku")
+    slider_sudoku
+    return (slider_sudoku,)
+
+
+@app.cell
+def _(mo):
+    slider_n = mo.ui.slider(2, 10, value=3, label="n")
+    slider_n
+    return (slider_n,)
+
+
+@app.cell
+def _(mo, slider_n):
+    N_ui = slider_n.value * slider_n.value
+    slider_pistas = mo.ui.slider(0, N_ui, value=slider_n.value, label="pistas")
+    slider_pistas
+    return (slider_pistas,)
+
+
+@app.cell
+def _(resolver_sudoku, slider_n, slider_pistas, slider_sudoku):
+    pistas, grelha = resolver_sudoku(slider_n.value, k=slider_pistas.value, seed=slider_sudoku.value)
+    print("Pistas:")
+    print(mostrar_sudoku(pistas.matriz(), slider_n.value))
+    print("Solucao:")
+    print(mostrar_sudoku(grelha, slider_n.value))
     return
 
 
